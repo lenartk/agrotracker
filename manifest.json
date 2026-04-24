@@ -1,0 +1,17 @@
+{
+  "name": "AgroTracker",
+  "short_name": "AgroTracker",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b0f0d",
+  "theme_color": "#0b0f0d",
+  "description": "PWA za sledenje obdelanim površinam — karta, GPS, BLE modul za stroj.",
+  "lang": "sl",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

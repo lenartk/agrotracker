@@ -1,0 +1,316 @@
+// AgroTracker ESP32 modul — firmware
+// ====================================
+//
+// Funkcije:
+//   1. BLE GATT strežnik (Nordic-like custom service).
+//      Telefon se poveže in prejema telemetrijo (JSON) preko notify.
+//   2. GPS (NEO-8M) preko UART2, NMEA parsanje s TinyGPSPlus.
+//   3. RS485 povezava na stroj (npr. sejalnica) preko UART1 (MAX485 driver).
+//      Sprejema preproste tekstovne ukaze (ACTIVE:1\n, WIDTH:3.0\n, FLOW:42.5\n)
+//      in shrani trenutno stanje, ki ga vključi v telemetrijo.
+//   4. Periodično (2 Hz) pošlje JSON paket.
+//
+// Pinout (privzeto, ESP32 WROOM-32 DevKit):
+//   GPS       RX = GPIO16,  TX = GPIO17  (UART2), 9600 baud
+//   RS485     RO = GPIO25,  DI = GPIO26,  DE/RE = GPIO27  (UART1), 9600 baud
+//   LED       GPIO2 (onboard) — stanje povezave
+//
+// Več informacij v docs/PROTOCOL.md
+
+#include <Arduino.h>
+#include <NimBLEDevice.h>
+#include <TinyGPSPlus.h>
+#include <ArduinoJson.h>
+
+// ----------- KONFIGURACIJA -----------
+#ifndef BLE_DEVICE_NAME
+#define BLE_DEVICE_NAME "AgroESP-01"
+#endif
+
+// Ti UUID-ji morajo biti identični tistim v JS (constants.js)
+#define SVC_UUID   "6b00a11e-1111-4a50-8000-000000000001"
+#define TX_UUID    "6b00a11e-1111-4a50-8000-000000000002"  // ESP -> telefon (notify)
+#define RX_UUID    "6b00a11e-1111-4a50-8000-000000000003"  // telefon -> ESP (write)
+#define INFO_UUID  "6b00a11e-1111-4a50-8000-000000000004"  // read-only info
+
+// Pinout
+#define GPS_RX_PIN      16
+#define GPS_TX_PIN      17
+#define GPS_BAUD        9600
+#define RS485_RX_PIN    25
+#define RS485_TX_PIN    26
+#define RS485_DE_PIN    27
+#define RS485_BAUD      9600
+#define LED_PIN          2
+
+// Telemetrijski interval v ms
+static const uint32_t TELEMETRY_INTERVAL_MS = 500;
+// Interval za GPS fix paket (ločeno od telemetrije, hitreje če se spreminja)
+static const uint32_t GPS_INTERVAL_MS = 500;
+// Koliko časa brez RS485 sporočila pomeni "RS485 NI OK"
+static const uint32_t RS485_TIMEOUT_MS = 3000;
+
+// ----------- STATE -----------
+HardwareSerial GPSSerial(2);
+HardwareSerial RS485Serial(1);
+TinyGPSPlus gps;
+
+// Stanje iz stroja (RS485)
+struct MachineState {
+  bool active = false;
+  float width_m = 3.0f;
+  float flow = NAN;               // lahko ostane NaN, če stroj ne pošilja
+  char machine_tag[16] = "sejalnica";
+  uint32_t lastMsgMs = 0;
+  bool rs485_ok = false;
+} mach;
+
+// BLE
+NimBLEServer* bleServer = nullptr;
+NimBLECharacteristic* txChar = nullptr;
+NimBLECharacteristic* rxChar = nullptr;
+NimBLECharacteristic* infoChar = nullptr;
+bool deviceConnected = false;
+
+class ServerCallbacks : public NimBLEServerCallbacks {
+  void onConnect(NimBLEServer* pServer, NimBLEConnInfo& info) override {
+    deviceConnected = true;
+    digitalWrite(LED_PIN, HIGH);
+    Serial.println("BLE: povezano");
+  }
+  void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& info, int reason) override {
+    deviceConnected = false;
+    digitalWrite(LED_PIN, LOW);
+    Serial.println("BLE: odklopljeno, ponovni advertise");
+    NimBLEDevice::startAdvertising();
+  }
+};
+
+class RxCallbacks : public NimBLECharacteristicCallbacks {
+  void onWrite(NimBLECharacteristic* ch, NimBLEConnInfo& info) override {
+    std::string val = ch->getValue();
+    if (val.empty()) return;
+    Serial.printf("RX: %s\n", val.c_str());
+    // Parse JSON ukaz
+    JsonDocument doc;
+    auto err = deserializeJson(doc, val);
+    if (err){
+      Serial.printf("RX parse err: %s\n", err.c_str());
+      return;
+    }
+    const char* cmd = doc["c"] | "";
+    if (strcmp(cmd, "ping") == 0){
+      sendJson("{\"t\":\"pong\",\"ms\":" + String(millis()) + "}");
+    } else if (strcmp(cmd, "sim") == 0){
+      // Ročno postavljanje simuliranega stanja iz telefona (za testiranje)
+      if (!doc["active"].isNull()) mach.active = (int)doc["active"] ? true : false;
+      if (!doc["width"].isNull()) mach.width_m = (float)doc["width"];
+      if (!doc["flow"].isNull()) mach.flow = (float)doc["flow"];
+      Serial.println("Sim stanje posodobljeno iz telefona");
+    } else if (strcmp(cmd, "setname") == 0){
+      // Bi lahko preimenovali stroj (persistence z Preferences bi dodal)
+      const char* n = doc["name"] | "";
+      if (*n){ strncpy(mach.machine_tag, n, sizeof(mach.machine_tag)-1); }
+    }
+  }
+};
+
+// ----------- RS485 I/O -----------
+void rs485SetTx(bool tx){ digitalWrite(RS485_DE_PIN, tx ? HIGH : LOW); }
+
+void rs485Send(const String& s){
+  rs485SetTx(true);
+  RS485Serial.print(s);
+  RS485Serial.flush();
+  delayMicroseconds(200);
+  rs485SetTx(false);
+}
+
+// Preprost line-protocol parser: KEY:VALUE\n
+// Primeri:
+//   ACTIVE:1
+//   WIDTH:3.0
+//   FLOW:42.5
+//   NAME:sejalnica
+//   SPEED:7.3   (km/h, neobvezno — fallback, če nimaš GPS)
+void handleRs485Line(const String& line){
+  int c = line.indexOf(':');
+  if (c < 1) return;
+  String key = line.substring(0, c); key.trim(); key.toUpperCase();
+  String val = line.substring(c + 1); val.trim();
+  mach.lastMsgMs = millis();
+  mach.rs485_ok = true;
+  if (key == "ACTIVE"){
+    mach.active = (val.toInt() != 0);
+  } else if (key == "WIDTH"){
+    float w = val.toFloat(); if (w > 0 && w < 50) mach.width_m = w;
+  } else if (key == "FLOW"){
+    mach.flow = val.toFloat();
+  } else if (key == "NAME"){
+    strncpy(mach.machine_tag, val.c_str(), sizeof(mach.machine_tag) - 1);
+    mach.machine_tag[sizeof(mach.machine_tag) - 1] = 0;
+  }
+}
+
+void readRs485(){
+  static String buf;
+  while (RS485Serial.available()){
+    char c = RS485Serial.read();
+    if (c == '\r') continue;
+    if (c == '\n'){
+      if (buf.length()) handleRs485Line(buf);
+      buf = "";
+    } else {
+      if (buf.length() < 120) buf += c;
+    }
+  }
+  if (mach.rs485_ok && (millis() - mach.lastMsgMs) > RS485_TIMEOUT_MS){
+    mach.rs485_ok = false;
+  }
+}
+
+// ----------- BLE SEND HELPERS -----------
+void sendJson(const String& json){
+  if (!deviceConnected || !txChar) return;
+  // NimBLE default MTU = 23 -> 20 B payload. Po MTU negotiation obicajno ~183 B.
+  // ArduinoJson packet je običajno 120-180 B, kar ustreza.
+  txChar->setValue((uint8_t*)json.c_str(), json.length());
+  txChar->notify();
+}
+
+// ----------- TELEMETRIJA -----------
+void sendTelemetry(){
+  JsonDocument doc;
+  doc["t"] = "tel";
+  doc["ms"] = millis();
+  doc["active"] = mach.active ? 1 : 0;
+  doc["mach"] = mach.machine_tag;
+  doc["w"] = mach.width_m;
+  doc["rs485_ok"] = mach.rs485_ok ? 1 : 0;
+  if (!isnan(mach.flow)) doc["flow"] = mach.flow;
+  String out; out.reserve(160);
+  serializeJson(doc, out);
+  sendJson(out);
+}
+
+void sendGps(){
+  if (!gps.location.isValid()) return;
+  JsonDocument doc;
+  doc["t"] = "gps";
+  doc["lat"] = gps.location.lat();
+  doc["lng"] = gps.location.lng();
+  if (gps.speed.isValid())    doc["spd"] = gps.speed.kmph();
+  if (gps.course.isValid())   doc["hdg"] = gps.course.deg();
+  if (gps.hdop.isValid())     doc["hdop"] = gps.hdop.hdop();
+  if (gps.satellites.isValid()) doc["sats"] = gps.satellites.value();
+  if (gps.altitude.isValid()) doc["alt"] = gps.altitude.meters();
+  doc["fix"] = gps.location.isValid() ? 1 : 0;
+  String out; out.reserve(180);
+  serializeJson(doc, out);
+  sendJson(out);
+}
+
+// ----------- SETUP / LOOP -----------
+void setup(){
+  Serial.begin(115200);
+  delay(200);
+  Serial.println("\n== AgroTracker ESP32 modul ==");
+  Serial.println("Ime: " BLE_DEVICE_NAME);
+
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+  pinMode(RS485_DE_PIN, OUTPUT);
+  rs485SetTx(false);
+
+  GPSSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
+  RS485Serial.begin(RS485_BAUD, SERIAL_8N1, RS485_RX_PIN, RS485_TX_PIN);
+
+  // BLE init
+  NimBLEDevice::init(BLE_DEVICE_NAME);
+  NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+  NimBLEDevice::setMTU(185);
+  bleServer = NimBLEDevice::createServer();
+  bleServer->setCallbacks(new ServerCallbacks());
+
+  NimBLEService* svc = bleServer->createService(SVC_UUID);
+  txChar = svc->createCharacteristic(TX_UUID, NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::READ);
+  rxChar = svc->createCharacteristic(RX_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
+  rxChar->setCallbacks(new RxCallbacks());
+  infoChar = svc->createCharacteristic(INFO_UUID, NIMBLE_PROPERTY::READ);
+  infoChar->setValue(
+    "{\"fw\":\"1.0.0\",\"dev\":\"" BLE_DEVICE_NAME "\",\"proto\":1}");
+
+  svc->start();
+
+  NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
+  adv->addServiceUUID(SVC_UUID);
+  adv->setName(BLE_DEVICE_NAME);
+  adv->enableScanResponse(true);
+  NimBLEDevice::startAdvertising();
+
+  Serial.println("BLE advertise zagnan, čakam povezavo...");
+}
+
+uint32_t lastTelem = 0;
+uint32_t lastGps   = 0;
+
+void loop(){
+  // GPS NMEA parsanje
+  while (GPSSerial.available()){
+    gps.encode(GPSSerial.read());
+  }
+
+  // RS485 vhod
+  readRs485();
+
+#ifdef SIM_MODE
+  // Fiktivni premikajoči GPS + aktiven stroj (za test brez strojne opreme)
+  static double simLat = 46.0515, simLng = 14.5030;
+  static uint32_t lastSim = 0;
+  if (millis() - lastSim > 200){
+    lastSim = millis();
+    simLng += 0.000015;   // ~1m na vzhod pri tej lat
+    mach.active = true;
+    mach.rs485_ok = true;
+    mach.width_m = 3.0f;
+    mach.flow = 22.5f;
+    mach.lastMsgMs = millis();
+    // Ročno pošljemo "GPS" paket
+    if (deviceConnected && millis() - lastGps > GPS_INTERVAL_MS){
+      JsonDocument doc;
+      doc["t"] = "gps";
+      doc["lat"] = simLat;
+      doc["lng"] = simLng;
+      doc["spd"] = 7.5;
+      doc["hdg"] = 90;
+      doc["hdop"] = 0.9;
+      doc["sats"] = 12;
+      doc["fix"] = 3;
+      String out; serializeJson(doc, out);
+      sendJson(out);
+      lastGps = millis();
+    }
+  }
+#else
+  // Pravi GPS paketi
+  if (deviceConnected && (millis() - lastGps > GPS_INTERVAL_MS)){
+    lastGps = millis();
+    if (gps.location.isUpdated() || gps.location.isValid()){
+      sendGps();
+    }
+  }
+#endif
+
+  // Telemetrija stroja
+  if (deviceConnected && (millis() - lastTelem > TELEMETRY_INTERVAL_MS)){
+    lastTelem = millis();
+    sendTelemetry();
+  }
+
+  // LED hitro utripanje, dokler ni povezan
+  if (!deviceConnected){
+    digitalWrite(LED_PIN, (millis() / 500) % 2);
+  }
+
+  delay(2);
+}
