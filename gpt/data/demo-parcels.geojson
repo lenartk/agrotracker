@@ -1,0 +1,47 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "id": "demo_a", "name": "Njiva pri gozdu", "ha": 2.34 },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [14.4960, 46.0538],
+          [14.5053, 46.0538],
+          [14.5053, 46.0492],
+          [14.4960, 46.0492],
+          [14.4960, 46.0538]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "demo_b", "name": "Domača ravnina", "ha": 1.82 },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [14.5080, 46.0548],
+          [14.5150, 46.0548],
+          [14.5150, 46.0517],
+          [14.5080, 46.0517],
+          [14.5080, 46.0548]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "demo_c", "name": "Breg za vasjo", "ha": 3.12 },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [14.4955, 46.0487],
+          [14.5065, 46.0487],
+          [14.5065, 46.0437],
+          [14.4955, 46.0437],
+          [14.4955, 46.0487]
+        ]]
+      }
+    }
+  ]
+}
