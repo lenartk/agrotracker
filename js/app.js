@@ -18,6 +18,9 @@ import {
   featureHa, bboxOfFeature, centroidOfFeature, pointInFeature,
   formatDistance, formatDuration
 } from './geo.js';
+import {
+  tilesForParcels, downloadTiles, tileCacheStats, clearTileCache, estimateTileCount
+} from './offline.js';
 
 // ============ STATE ============
 const state = {
@@ -26,14 +29,16 @@ const state = {
   session: null,
   map: null,
   telemetry: { active: null, width: null, flow: null, rs485ok: false, machine: null },
+  online: navigator.onLine,
+  tileDownload: null,  // {abort, done, total} ko teče predprenos
   settings: {
-    gpsSource: 'phone',      // phone | ble | sim
+    gpsSource: 'phone',
     simSpeedKmh: DEFAULTS.simSpeedKmh,
     workedOpacity: DEFAULTS.workedOpacity,
     widthOverride: null,
     autoSelectParcel: true,
-    useBleMachineActive: true,   // uporabi active iz BLE, sicer privzeto true
-    useBleWidth: true,           // uporabi širino iz BLE, sicer ročno
+    useBleMachineActive: true,
+    useBleWidth: true,
   },
   // Home
   selectedOpId: 'seed',
@@ -127,6 +132,10 @@ async function init(){
     gps.setSource('sim');
   }
 
+  // Online/offline events
+  window.addEventListener('online',  () => { state.online = true;  refreshOnlinePill(); toast('Spletna povezava'); });
+  window.addEventListener('offline', () => { state.online = false; refreshOnlinePill(); toast('Brez povezave (offline)'); });
+
   // Wire UI
   wireHome();
   wireMap();
@@ -137,6 +146,7 @@ async function init(){
   // Default view
   renderHome();
   showView('home');
+  refreshOnlinePill();
 
   // Register SW
   if ('serviceWorker' in navigator){
@@ -633,6 +643,18 @@ function refreshBlePill(){
   }
 }
 
+function refreshOnlinePill(){
+  const pill = $('#onlinePill');
+  if (!pill) return;
+  if (state.online){
+    pill.className = 'pill ok';
+    pill.innerHTML = '<span class="dot"></span>Online';
+  } else {
+    pill.className = 'pill warn';
+    pill.innerHTML = '<span class="dot"></span>Offline';
+  }
+}
+
 function refreshTelemetryUI(){
   // Če je BLE povezan in pošilja active, posodobi vozilo
   if (state.map && state.session){
@@ -895,9 +917,59 @@ function wireSettingsView(){
     persistSettings();
   });
 
+  // Offline tiles
+  $('#settingsPrewarmBtn').onclick = () => prewarmTilesForParcels();
+  $('#settingsClearTilesBtn').onclick = async () => {
+    if (!confirm('Izbriši vse predprenesene tile-e? Karta bo brez interneta nedostopna.')) return;
+    await clearTileCache();
+    toast('Tile cache izbrisan');
+    renderSettings();
+  };
+  $('#settingsExportAllBtn').onclick = () => exportAllSessionsAsGeoJSON();
+
   // Modal close
   $('#modalCloseBtn').onclick = closeModal;
   $('#modalScrim').addEventListener('click', (e) => { if (e.target.id === 'modalScrim') closeModal(); });
+}
+
+async function prewarmTilesForParcels(){
+  if (!state.parcels.length){ toast('Ni parcel za predprenos'); return; }
+  if (state.tileDownload && !state.tileDownload.finished){ toast('Prenos že teče'); return; }
+
+  // Najprej oceni število
+  const z1 = 14, z2 = 18;
+  const urls = tilesForParcels(state.parcels, z1, z2, ['osm', 'sat']);
+  const approxMB = (urls.length * 15) / 1024;
+  if (!confirm(`Predprenesi ${urls.length} tile-ov za ${state.parcels.length} parcel?\n\nOcena prostora: ~${approxMB.toFixed(0)} MB\nZoom nivoji: ${z1}–${z2}\nProvider: OSM + satelit\n\nPrenos lahko traja nekaj minut. Najbolje preko WiFi.`)) return;
+
+  // Ustvari progress dialog
+  const body = $('#modalBody');
+  body.innerHTML = `
+    <div style="text-align:center;padding:10px">
+      <div style="font-size:14px;margin-bottom:8px">Prenašanje tile-ov…</div>
+      <div class="progressbar" style="margin:14px 0"><div class="progressfill" id="dlProgress" style="width:0%"></div></div>
+      <div id="dlStatus" style="font-size:12px;color:var(--muted)">Pripravljam…</div>
+      <div class="btn-row" style="margin-top:14px">
+        <button class="minibtn danger" id="dlCancelBtn">Prekini</button>
+      </div>
+    </div>
+  `;
+  $('#modalScrim').classList.add('open');
+  let cancelled = false;
+  $('#dlCancelBtn').onclick = () => { cancelled = true; toast('Prekinjam…'); };
+
+  state.tileDownload = { abort: () => { cancelled = true; }, done: 0, total: urls.length, finished: false };
+
+  await downloadTiles(urls, (p) => {
+    if (cancelled) return;
+    if ($('#dlProgress')) $('#dlProgress').style.width = (100 * p.done / p.total).toFixed(1) + '%';
+    if ($('#dlStatus')) $('#dlStatus').textContent = `${p.done} / ${p.total}` + (p.errors ? ` (${p.errors} napak)` : '');
+  }, { abortSignal: { get aborted(){ return cancelled; } } });
+
+  state.tileDownload.finished = true;
+  closeModal();
+  toast(cancelled ? 'Prekinjeno' : 'Predprenos končan');
+  renderSettings();
 }
 
 async function renderSettings(){
@@ -908,6 +980,12 @@ async function renderSettings(){
   $('#settingsStorageUsage').textContent = est
     ? est.usedMB.toFixed(1) + ' MB / ' + est.quotaMB.toFixed(0) + ' MB'
     : 'ni podatka';
+
+  // Offline tile cache info
+  const tiles = await tileCacheStats();
+  if ($('#settingsTilesCount')){
+    $('#settingsTilesCount').textContent = tiles.count + ' tile-ov (~' + tiles.approxMB.toFixed(0) + ' MB)';
+  }
 
   // Radio
   $$('input[name=settingsGpsSrc]').forEach(r => { r.checked = (r.value === state.settings.gpsSource); });
@@ -920,6 +998,8 @@ async function renderSettings(){
     : (ble.isSupported() ? 'Ni povezano' : 'Brskalnik ne podpira BLE');
   $('#settingsBleBtn').textContent = ble.connected ? 'Prekini' : 'Poveži';
   $('#settingsBleBtn').disabled = !ble.isSupported();
+
+  $('#settingsOnlineStatus').textContent = state.online ? 'Online' : 'Offline';
 
   const ua = navigator.userAgent;
   $('#settingsBrowser').textContent = ua.length > 80 ? ua.slice(0, 80) + '…' : ua;

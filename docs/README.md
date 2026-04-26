@@ -7,7 +7,7 @@ PWA za sledenje obdelanim površinam — telefon je zemljevid in terminal, ESP32
 ## Sestava
 
 ```
-agrotracker_pwa/              # PWA — postaviš na spletni strežnik (HTTPS) ali ji dostopaš z Android Chrome
+agrotracker_pwa/              # PWA — HTTPS strežnik ali Android Chrome
 ├── index.html                # Shell z vsemi pogledi
 ├── manifest.json             # PWA manifest
 ├── sw.js                     # Service worker (offline cache, tile cache)
@@ -20,14 +20,23 @@ agrotracker_pwa/              # PWA — postaviš na spletni strežnik (HTTPS) a
 │   ├── ble.js                # Web Bluetooth klient
 │   ├── gps.js                # GPS vir (phone / BLE / sim)
 │   ├── map.js                # Leaflet ovojnica
-│   └── session.js            # Življenjski cikel seje
+│   ├── session.js            # Življenjski cikel seje
+│   └── offline.js            # Predprenos tile-ov za offline
 ├── data/demo-parcels.geojson # Tri demo parcele v okolici Ljubljane
-└── icons/                    # PWA ikone
+├── icons/                    # PWA ikone
+└── vendor/                   # Leaflet lokalno (za offline)
 
 firmware/                     # ESP32 firmware za BLE modul na stroju
 ├── platformio.ini
 ├── src/main.cpp
 └── ...
+
+docs/
+├── README.md                 # Ta dokument (quickstart)
+├── PROJECT.md                # Popoln opis projekta + roadmap
+├── CHANGELOG.md              # Verzije in spremembe
+└── PROTOCOL.md               # BLE in RS485 specifikacija
+```
 
 docs/
 ├── PROTOCOL.md               # BLE in RS485 specifikacija

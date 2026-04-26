@@ -84,6 +84,7 @@
     <div class="status-pills">
       <span class="pill" id="gpsPill"><span class="dot"></span>Brez GPS</span>
       <span class="pill" id="blePill"><span class="dot"></span>Brez stroja</span>
+      <span class="pill" id="onlinePill"><span class="dot"></span>—</span>
     </div>
 
     <div class="sidecontrols">
@@ -226,10 +227,25 @@
     </div>
 
     <div class="card">
+      <h3>📥 Offline (brez signala)</h3>
+      <div class="hint">Predprenesi karto za vse parcele, da bo na voljo brez interneta. Najbolje narediš doma na WiFi.</div>
+      <div class="rowline"><span class="small muted">Trenutna povezava</span><strong id="settingsOnlineStatus">—</strong></div>
+      <div class="rowline"><span class="small muted">Predpreneseni tile-i</span><strong id="settingsTilesCount">—</strong></div>
+      <div class="btn-row">
+        <button class="minibtn" id="settingsPrewarmBtn">Predprenesi za parcele</button>
+        <button class="minibtn danger" id="settingsClearTilesBtn">Izbriši tile cache</button>
+      </div>
+    </div>
+
+    <div class="card">
       <h3>💾 Podatki</h3>
       <div class="rowline"><span class="small muted">Seje</span><strong id="settingsSessionsCount">—</strong></div>
       <div class="rowline"><span class="small muted">Zasedenost</span><strong id="settingsStorageUsage">—</strong></div>
-      <button class="minibtn danger" id="settingsResetSettingsBtn" style="width:100%">Ponastavi nastavitve</button>
+      <div class="hint" style="margin-top:8px">Priporočilo: po vsakem opravilu na terenu izvozi GeoJSON kot varnostno kopijo (lahko deliš preko Drive, e-maila ipd.).</div>
+      <div class="btn-row">
+        <button class="minibtn" id="settingsExportAllBtn">Backup vseh sej</button>
+        <button class="minibtn danger" id="settingsResetSettingsBtn">Resetiraj nastavitve</button>
+      </div>
     </div>
 
     <div class="card">

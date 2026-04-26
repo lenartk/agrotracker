@@ -4,7 +4,7 @@
 //   - Zemljevid tile-i — network-first z dolgotrajnim cache-om (za parcele, ki si jih že obiskal)
 //   - Vse ostalo — cache-first z network fallback-om
 
-const APP_CACHE = 'agrotracker-app-v2';
+const APP_CACHE = 'agrotracker-app-v3';
 const TILE_CACHE = 'agrotracker-tiles-v1';
 
 const SHELL = [
@@ -20,6 +20,7 @@ const SHELL = [
   './js/gps.js',
   './js/map.js',
   './js/session.js',
+  './js/offline.js',
   './data/demo-parcels.geojson',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -58,7 +59,8 @@ self.addEventListener('fetch', (e) => {
       caches.open(TILE_CACHE).then(cache =>
         cache.match(e.request).then(cached => {
           const fetchPromise = fetch(e.request).then(resp => {
-            if (resp && resp.ok) cache.put(e.request, resp.clone());
+            // Sprejmemo tudi opaque (mode: 'no-cors' brez CORS header-jev)
+            if (resp && (resp.ok || resp.type === 'opaque')) cache.put(e.request, resp.clone());
             return resp;
           }).catch(() => cached);
           return cached || fetchPromise;
