@@ -2,6 +2,64 @@
 
 import { createStrip } from './geo.js';
 
+const MAX_REASONABLE_BOUNDS_SPAN_DEG = 8;
+
+function finiteNumber(v){
+  return typeof v === 'number' && Number.isFinite(v);
+}
+
+function walkCoordPairs(coords, cb){
+  if (!Array.isArray(coords)) return;
+  if (coords.length >= 2 && finiteNumber(coords[0]) && finiteNumber(coords[1])){
+    cb(coords);
+    return;
+  }
+  coords.forEach(child => walkCoordPairs(child, cb));
+}
+
+function featureHasUsableCoordinates(feat){
+  const g = feat && feat.geometry;
+  if (!g || !Array.isArray(g.coordinates)) return false;
+
+  let total = 0;
+  let validWorld = 0;
+  let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+
+  walkCoordPairs(g.coordinates, ([lng, lat]) => {
+    total++;
+    if (!finiteNumber(lng) || !finiteNumber(lat)) return;
+    if (Math.abs(lng) > 180 || Math.abs(lat) > 90) return;
+    validWorld++;
+    minLng = Math.min(minLng, lng);
+    maxLng = Math.max(maxLng, lng);
+    minLat = Math.min(minLat, lat);
+    maxLat = Math.max(maxLat, lat);
+  });
+
+  if (!total || !validWorld) return false;
+  if ((maxLng - minLng) > MAX_REASONABLE_BOUNDS_SPAN_DEG) return false;
+  if ((maxLat - minLat) > MAX_REASONABLE_BOUNDS_SPAN_DEG) return false;
+  return true;
+}
+
+function latLngLooksUsable(latlng){
+  const ll = Array.isArray(latlng) ? { lat: latlng[0], lng: latlng[1] } : latlng;
+  return ll && finiteNumber(ll.lat) && finiteNumber(ll.lng) &&
+    Math.abs(ll.lat) <= 90 && Math.abs(ll.lng) <= 180;
+}
+
+function boundsLooksUsable(bounds){
+  if (!bounds || typeof bounds.isValid !== 'function' || !bounds.isValid()) return false;
+  const sw = bounds.getSouthWest();
+  const ne = bounds.getNorthEast();
+  if (![sw.lat, sw.lng, ne.lat, ne.lng].every(finiteNumber)) return false;
+  if (Math.abs(sw.lat) > 90 || Math.abs(ne.lat) > 90) return false;
+  if (Math.abs(sw.lng) > 180 || Math.abs(ne.lng) > 180) return false;
+  if (Math.abs(ne.lat - sw.lat) > MAX_REASONABLE_BOUNDS_SPAN_DEG) return false;
+  if (Math.abs(ne.lng - sw.lng) > MAX_REASONABLE_BOUNDS_SPAN_DEG) return false;
+  return true;
+}
+
 export class MapController {
   constructor(el, opts = {}){
     this.el = el;
@@ -57,12 +115,24 @@ export class MapController {
     this.parcelLayer.clearLayers();
     this.parcelRefs = [];
     features.forEach((f) => {
-      const layer = L.geoJSON(f, {
-        style: {
-          color: '#86efac', weight: 2, fillColor: '#4ade80',
-          fillOpacity: 0.08, dashArray: '6,5', className: 'parcel'
-        }
-      }).addTo(this.parcelLayer);
+      if (!featureHasUsableCoordinates(f)){
+        console.warn('Preskočena parcela z neveljavnimi/sumljivimi koordinatami:', f?.properties?.name || f?.id || f);
+        return;
+      }
+
+      let layer;
+      try {
+        layer = L.geoJSON(f, {
+          style: {
+            color: '#86efac', weight: 2, fillColor: '#4ade80',
+            fillOpacity: 0.08, dashArray: '6,5', className: 'parcel'
+          }
+        }).addTo(this.parcelLayer);
+      } catch (e){
+        console.warn('Parcele ni bilo mogoče narisati:', f?.properties?.name || f?.id || f, e);
+        return;
+      }
+
       layer.on('click', () => { if (this.onParcelClick) this.onParcelClick(f.id); });
       this.parcelRefs.push({ id: f.id, feat: f, layer });
     });
@@ -73,6 +143,7 @@ export class MapController {
     this.selectedParcelId = id;
     this.parcelRefs.forEach(p => {
       const isSel = p.id === id;
+      if (!p.layer || typeof p.layer.setStyle !== 'function') return;
       p.layer.setStyle({
         color: isSel ? '#22c55e' : '#86efac',
         weight: isSel ? 3 : 2,
@@ -84,18 +155,34 @@ export class MapController {
 
   fitToParcel(id){
     const p = this.parcelRefs.find(x => x.id === id);
-    if (!p) return;
+    if (!p) {
+      console.warn('fitToParcel: parcela ni narisana ali ima neveljavne koordinate:', id);
+      return false;
+    }
     const b = p.layer.getBounds();
-    if (b.isValid()) this.map.fitBounds(b, { padding: [40, 40] });
+    if (!boundsLooksUsable(b)){
+      console.warn('fitToParcel: sumljiv bbox, fitBounds preskočen:', id, b);
+      return false;
+    }
+    this.map.fitBounds(b, { padding: [40, 40], maxZoom: 18 });
+    return true;
   }
 
   fitToAllParcels(){
-    if (!this.parcelRefs.length) return;
-    const group = L.featureGroup(this.parcelRefs.map(p => p.layer));
-    this.map.fitBounds(group.getBounds(), { padding: [40, 40] });
+    const layers = this.parcelRefs.map(p => p.layer).filter(Boolean);
+    if (!layers.length) return false;
+    const group = L.featureGroup(layers);
+    const b = group.getBounds();
+    if (!boundsLooksUsable(b)){
+      console.warn('fitToAllParcels: sumljiv skupni bbox, fitBounds preskočen:', b);
+      return false;
+    }
+    this.map.fitBounds(b, { padding: [40, 40], maxZoom: 18 });
+    return true;
   }
 
   ensureVehicle(latlng){
+    if (!latLngLooksUsable(latlng)) return;
     if (!this.vehicleMarker){
       const icon = L.divIcon({
         className: '', iconSize: [60,60], iconAnchor: [30,30],
@@ -108,6 +195,7 @@ export class MapController {
   }
 
   setVehicleLatLng(latlng){
+    if (!latLngLooksUsable(latlng)) return;
     if (!this.vehicleMarker) this.ensureVehicle(latlng);
     else this.vehicleMarker.setLatLng(latlng);
   }
@@ -125,6 +213,7 @@ export class MapController {
   }
 
   paintSegment(fromLL, toLL, widthM){
+    if (!latLngLooksUsable(fromLL) || !latLngLooksUsable(toLL)) return 0;
     const coords = createStrip(fromLL, toLL, widthM);
     if (!coords) return 0;
     const strip = L.polygon(coords, {
@@ -164,11 +253,13 @@ export class MapController {
   }
 
   centerOn(latlng, zoom){
+    if (!latLngLooksUsable(latlng)) return false;
     this.map.setView(latlng, zoom || Math.max(this.map.getZoom(), 17));
+    return true;
   }
 
   softFollow(latlng){
-    if (!this.follow) return;
+    if (!this.follow || !latLngLooksUsable(latlng)) return;
     const size = this.map.getSize();
     const p = this.map.latLngToContainerPoint(latlng);
     const target = L.point(size.x / 2, size.y * 0.62);
