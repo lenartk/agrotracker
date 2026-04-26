@@ -6,6 +6,25 @@ Format: [verzija] - YYYY-MM-DD
 
 ---
 
+## [v2.3] - 2026-04-26
+
+### Dodano
+
+- `AGENTS.md` v root mapi — navodila za AI agente in nove sodelavce
+  - Vrstni red branja dokumentacije
+  - Kontekst projekta v eni minuti
+  - Tehnični stack (fiksne odločitve)
+  - Standardi kode
+  - Pasti, na katere paziti
+  - Brezpogojno NE delaj seznam
+  - Kako končati spremembe (test → changelog → commit)
+
+### Spremenjeno
+
+- Root `README.md` referenca na `AGENTS.md`
+
+---
+
 ## [v2.2] - 2026-04-26
 
 ### Dokumentacija razširjena

@@ -33,6 +33,8 @@ Vse v mapi [`docs/`](./docs/):
 - 📡 [**PROTOCOL.md**](./docs/PROTOCOL.md) — BLE in RS485 specifikacija
 - 📝 [**CHANGELOG.md**](./docs/CHANGELOG.md) — zgodovina verzij
 
+Za AI agente in nove sodelavce: glej [**AGENTS.md**](./AGENTS.md) v root mapi.
+
 ## Hitra namestitev na Android
 
 1. Odpri https://lenartk.github.io/agrotracker/ v Chrome
