@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<title>AgroTracker GPT test</title>
+<meta name="theme-color" content="#0b0f0d" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="AgroGPT" />
+<link rel="manifest" href="./manifest.json" />
+<link rel="apple-touch-icon" href="../icons/icon-192.png" />
+<link rel="stylesheet" href="../vendor/leaflet.css" />
+<link rel="stylesheet" href="../css/app.css" />
+</head>
+<body>
+<div id="app">
+
+  <!-- ========== HOME VIEW ========== -->
+  <section id="view-home" class="view active">
+    <div class="home-header">
+      <div class="home-logo">🧪</div>
+      <div style="flex:1">
+        <div class="home-title">AgroTracker GPT</div>
+        <div class="home-sub">Testna veja gpt — ločena PWA</div>
+      </div>
+      <button class="iconbtn circle" id="homeHistoryBtn" title="Zgodovina">📂</button>
+      <button class="iconbtn circle" id="homeSettingsBtn" title="Nastavitve">⚙</button>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Tip dela</div>
+      <div class="op-grid" id="opGrid"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Stroj</div>
+      <div class="picker-row" id="machineRow"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Parcela</div>
+      <div class="picker-row" id="parcelRow"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Opomba (neobvezno)</div>
+      <input type="text" id="homeNote" placeholder="npr. setev koruze, odmerek 25 kg/ha" />
+    </div>
+
+    <button class="start-btn" id="homeStartBtn">Začni sledenje</button>
+
+    <div class="section" style="margin-top:20px">
+      <div class="section-label">Hitro</div>
+      <div class="quick-actions">
+        <button class="quick-btn" id="homeHistoryBtn2" onclick="document.getElementById('homeHistoryBtn').click()"><span class="icon">📂</span><span>Zgodovina</span></button>
+        <button class="quick-btn" id="homeSettingsBtn2" onclick="document.getElementById('homeSettingsBtn').click()"><span class="icon">⚙</span><span>Nastavitve</span></button>
+        <button class="quick-btn" onclick="alert('To je ločena testna PWA. V Chromu izberi Namesti aplikacijo / Add to Home screen.')"><span class="icon">📱</span><span>Namesti</span></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== MAP VIEW ========== -->
+  <section id="view-map" class="view">
+    <div id="map"></div>
+
+    <div class="map-topbar glass">
+      <div class="row">
+        <button class="iconbtn" id="mapMenuBtn">☰</button>
+        <div class="titlewrap">
+          <div class="title" id="mapParcelName">—</div>
+          <div class="subtitle" id="mapMachineName">—</div>
+        </div>
+        <div style="width:44px"></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="label">Hitrost</div><div class="value"><span id="speedVal">0.0</span><span class="unit">km/h</span></div></div>
+        <div class="stat"><div class="label">Danes</div><div class="value"><span id="doneVal">0.000</span><span class="unit">ha</span></div></div>
+        <div class="stat"><div class="label">Širina</div><div class="value"><span id="widthVal">3.0</span><span class="unit">m</span></div></div>
+        <div class="stat"><div class="label">Čas</div><div class="value" id="durVal">0s</div></div>
+      </div>
+    </div>
+
+    <div class="status-pills">
+      <span class="pill" id="gpsPill"><span class="dot"></span>Brez GPS</span>
+      <span class="pill" id="blePill"><span class="dot"></span>Brez stroja</span>
+      <span class="pill" id="onlinePill"><span class="dot"></span>—</span>
+    </div>
+
+    <div class="sidecontrols">
+      <button class="iconbtn glass" id="mapCenterBtn" title="Na sredino">◎</button>
+      <button class="iconbtn glass" id="mapTerrainBtn" title="Satelit / zemljevid">🗺</button>
+      <button class="iconbtn glass" id="mapLayersBtn" title="Sredina ON/OFF">⊙</button>
+    </div>
+
+    <div class="map-bottom glass">
+      <div class="map-bottom-head">
+        <div>
+          <div style="font-weight:700;font-size:14px">Sledenje dela</div>
+          <div style="font-size:11px;color:var(--muted)">GPS vir: <span id="gpsAccuracy">—</span></div>
+        </div>
+        <div id="trackingBadge" class="badge off">Ustavljeno</div>
+      </div>
+      <div class="actions">
+        <button id="startBtn" class="bigbtn primary">Začni</button>
+        <button id="pauseBtn" class="bigbtn pauseb" disabled>Pavza</button>
+        <button id="stopBtn"  class="bigbtn stop"   disabled>Shrani</button>
+      </div>
+      <div class="progress">
+        <div class="rowline" style="margin:0">
+          <span style="font-size:12px;color:var(--muted)">Napredek na parceli</span>
+          <strong id="pctVal">—</strong>
+        </div>
+        <div class="progressbar"><div class="progressfill" id="progressFill"></div></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px">
+          <div class="stat"><div class="label">Prehodi</div><div class="value" id="passesVal">0</div></div>
+          <div class="stat"><div class="label">Pretok</div><div class="value"><span id="flowVal">—</span></div></div>
+          <div class="stat"><div class="label">Stroj</div><div class="value" style="font-size:13px"><span id="machineState">—</span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Drawer -->
+    <div id="drawerScrim"></div>
+    <aside id="drawer">
+      <div class="drawer-inner glass">
+        <div class="rowline" style="margin:0 0 14px">
+          <div style="font-size:18px;font-weight:800">Meni</div>
+          <button class="iconbtn" id="drawerCloseBtn">✕</button>
+        </div>
+
+        <div class="card">
+          <h3>📍 Trenutno</h3>
+          <div class="rowline"><span class="small muted">Delo</span><strong id="drawerOp">—</strong></div>
+          <div class="rowline"><span class="small muted">Stroj</span><strong id="drawerMachine">—</strong></div>
+          <div class="rowline"><span class="small muted">Parcela</span><strong id="drawerParcel">—</strong></div>
+          <div class="rowline"><span class="small muted">Širina</span><strong id="drawerWidth">—</strong></div>
+          <div class="rowline"><span class="small muted">GPS vir</span><strong id="drawerGpsSource">—</strong></div>
+        </div>
+
+        <div class="card">
+          <h3>📡 ESP32 (BLE)</h3>
+          <div class="hint">Povezava na stroj preko modula ESP32. Zahteva Chrome na Androidu.</div>
+          <div id="drawerBleUnsupported" class="note" style="display:none;margin-bottom:8px;color:var(--warn)">⚠ Brskalnik ne podpira Web Bluetooth.</div>
+          <div class="rowline"><span class="small muted">Stanje</span><strong id="drawerBleStatus">ni povezano</strong></div>
+          <button class="minibtn" id="drawerBleBtn" style="width:100%">Poveži</button>
+        </div>
+
+        <div class="card">
+          <h3>🛰 GPS vir</h3>
+          <div id="drawerGpsRadios">
+            <label class="toggle"><span>Telefon (navadni GPS)</span><input type="radio" name="drawerGpsSrc" value="phone"></label>
+            <label class="toggle"><span>ESP32 (prek BLE)</span><input type="radio" name="drawerGpsSrc" value="ble"></label>
+            <label class="toggle"><span>Simulacija (vlečenje)</span><input type="radio" name="drawerGpsSrc" value="sim"></label>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>⚙ Parametri</h3>
+          <div class="rowline"><span>Hitrost simulacije</span><strong><span id="drawerSimSpeedLabel">8</span> km/h</strong></div>
+          <input type="range" id="drawerSimSpeed" min="2" max="20" step="1" value="8" />
+          <div class="rowline tall"><span>Prosojnost barvanja</span><strong id="drawerOpacityLabel">0.38</strong></div>
+          <input type="range" id="drawerOpacity" min="0.10" max="0.80" step="0.02" value="0.38" />
+          <div class="rowline tall"><span>Preglasi širino (m)</span></div>
+          <input type="number" id="drawerWidthOverride" min="0.5" max="30" step="0.1" placeholder="samodejno" />
+        </div>
+
+        <div class="card">
+          <h3>🧹 Akcije</h3>
+          <div class="btn-row">
+            <button class="minibtn" id="drawerClearBtn">Počisti barvanje</button>
+            <button class="minibtn" id="drawerGoHome">Domov</button>
+            <button class="minibtn" id="drawerToHistory">Zgodovina</button>
+            <button class="minibtn" id="drawerToSettings">Nastavitve</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ========== HISTORY VIEW ========== -->
+  <section id="view-history" class="view">
+    <div class="nav-back">
+      <button class="iconbtn" id="historyBackBtn">←</button>
+      <div class="title">Zgodovina opravil</div>
+      <button class="iconbtn" id="historyExportAllBtn" title="Izvozi vse">⇪</button>
+    </div>
+    <div class="session-list" id="historyList"></div>
+  </section>
+
+  <!-- ========== SETTINGS VIEW ========== -->
+  <section id="view-settings" class="view">
+    <div class="nav-back">
+      <button class="iconbtn" id="settingsBackBtn">←</button>
+      <div class="title">Nastavitve — GPT test</div>
+      <div style="width:40px"></div>
+    </div>
+
+    <div class="card">
+      <h3>🗺 Parcele</h3>
+      <div class="hint">Uvozi GeoJSON z GERK parcel. Datoteka mora biti EPSG:4326/WGS84 in koordinate [lng, lat].</div>
+      <div class="rowline"><span class="small muted">Število</span><strong id="settingsParcelsCount">—</strong></div>
+      <input type="file" id="fileImport" accept=".geojson,.json,application/geo+json,application/json" style="display:none">
+      <div class="btn-row">
+        <button class="minibtn" id="settingsImportBtn">Uvozi GeoJSON</button>
+        <button class="minibtn danger" id="settingsClearParcelsBtn">Izbriši vse</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>🛰 GPS</h3>
+      <div id="settingsGpsRadios">
+        <label class="toggle"><span>Telefon</span><input type="radio" name="settingsGpsSrc" value="phone"></label>
+        <label class="toggle"><span>ESP32 (BLE)</span><input type="radio" name="settingsGpsSrc" value="ble"></label>
+        <label class="toggle"><span>Simulacija</span><input type="radio" name="settingsGpsSrc" value="sim"></label>
+      </div>
+      <label class="toggle"><span>Samodejno izberi parcelo po GPS</span><input type="checkbox" id="settingsAutoParcel"></label>
+    </div>
+
+    <div class="card">
+      <h3>📡 BLE povezava</h3>
+      <div class="hint">Modul ESP32 na stroju pošilja telemetrijo.</div>
+      <div class="rowline"><span class="small muted">Stanje</span><strong id="settingsBleStatus">—</strong></div>
+      <button class="minibtn" id="settingsBleBtn" style="width:100%">Poveži</button>
+      <label class="toggle" style="margin-top:10px"><span>Uporabi "aktiven" signal stroja (iz BLE)</span><input type="checkbox" id="settingsUseBleActive"></label>
+      <label class="toggle"><span>Uporabi širino iz BLE (če jo pošilja)</span><input type="checkbox" id="settingsUseBleWidth"></label>
+    </div>
+
+    <div class="card">
+      <h3>📥 Offline (brez signala)</h3>
+      <div class="hint">Testna PWA ima ločen cache. Za polni offline test najprej enkrat odpri vse poglede na WiFi.</div>
+      <div class="rowline"><span class="small muted">Trenutna povezava</span><strong id="settingsOnlineStatus">—</strong></div>
+      <div class="rowline"><span class="small muted">Predpreneseni tile-i</span><strong id="settingsTilesCount">—</strong></div>
+      <div class="btn-row">
+        <button class="minibtn" id="settingsPrewarmBtn">Predprenesi za parcele</button>
+        <button class="minibtn danger" id="settingsClearTilesBtn">Izbriši tile cache</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>💾 Podatki</h3>
+      <div class="rowline"><span class="small muted">Seje</span><strong id="settingsSessionsCount">—</strong></div>
+      <div class="rowline"><span class="small muted">Zasedenost</span><strong id="settingsStorageUsage">—</strong></div>
+      <div class="hint" style="margin-top:8px">To je ločena testna PWA, vendar uporablja isto IndexedDB ime kot osnovna aplikacija. Za čisto testiranje lahko izbrišeš podatke v tej aplikaciji.</div>
+      <div class="btn-row">
+        <button class="minibtn" id="settingsExportAllBtn">Backup vseh sej</button>
+        <button class="minibtn danger" id="settingsResetSettingsBtn">Resetiraj nastavitve</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>ℹ O aplikaciji</h3>
+      <div class="note">
+        AgroTracker GPT test — koda iz branch-a <strong>gpt</strong>.<br>
+        URL in PWA scope sta ločena od osnovne aplikacije.<br><br>
+        <strong>Brskalnik:</strong> <span id="settingsBrowser" class="small muted"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== TOAST & MODAL ========== -->
+  <div id="toast" class="toast">Pripravljeno</div>
+
+  <div id="modalScrim" class="modal-scrim">
+    <div class="modal glass">
+      <div class="rowline" style="margin:0">
+        <h2>Podrobnosti</h2>
+        <button class="iconbtn" id="modalCloseBtn">✕</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="../vendor/leaflet.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/gh/lenartk/agrotracker@gpt/js/app.js"></script>
+</body>
+</html>
