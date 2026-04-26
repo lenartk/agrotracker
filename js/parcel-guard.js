@@ -223,7 +223,44 @@
     location.reload();
   }
 
+  function ensureDiagnosticsPanel(){
+    const settings = document.getElementById('view-settings');
+    if (!settings || document.getElementById('parcelDiagCard')) return;
+    const about = Array.from(settings.querySelectorAll('.card h3'))
+      .find(h => h.textContent.includes('O aplikaciji'))?.closest('.card');
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.id = 'parcelDiagCard';
+    card.innerHTML = `
+      <h3>🧪 Diagnostika parcel</h3>
+      <div class="hint">Preveri, ali so uvožene parcele res GeoJSON v WGS84/EPSG:4326. To je prva pomoč, če klik na parcelo premakne karto v črnino.</div>
+      <div class="btn-row">
+        <button class="minibtn" id="settingsParcelDiagBtn">Preveri parcele</button>
+        <button class="minibtn" id="settingsHardReloadBtn">Osveži PWA cache</button>
+      </div>
+      <div id="parcelDiagOutput" class="diag-output note" style="margin-top:10px">Klikni preverjanje po uvozu GeoJSON.</div>
+    `;
+    if (about) settings.insertBefore(card, about);
+    else settings.appendChild(card);
+  }
+
+  function ensureDiagnosticStyles(){
+    if (document.getElementById('parcelDiagStyles')) return;
+    const style = document.createElement('style');
+    style.id = 'parcelDiagStyles';
+    style.textContent = `
+      .diag-output{max-height:260px;overflow:auto}
+      .diag-row{padding:8px;margin:6px 0;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid var(--border2)}
+      .diag-row.ok{border-color:rgba(34,197,94,.35)}
+      .diag-row.warn{border-color:rgba(245,158,11,.45)}
+      .diag-row.bad{border-color:rgba(239,68,68,.45)}
+    `;
+    document.head.appendChild(style);
+  }
+
   function wireDiagnosticsUI(){
+    ensureDiagnosticStyles();
+    ensureDiagnosticsPanel();
     const diagBtn = document.getElementById('settingsParcelDiagBtn');
     if (diagBtn && !diagBtn.__wired){
       diagBtn.__wired = true;
@@ -239,6 +276,7 @@
   patchLeafletFitBounds();
   document.addEventListener('DOMContentLoaded', wireDiagnosticsUI);
   window.addEventListener('load', wireDiagnosticsUI);
+  window.setInterval(wireDiagnosticsUI, 1200);
 
   window.agroParcelGuard = {
     featureStats,
