@@ -1,5 +1,6 @@
 // Ovijalnik za Leaflet map. Upravlja plasti (OSM / satelit), parcele, vozilo, trakove pokritja.
 
+import './parcel-guard.js';
 import { createStrip } from './geo.js';
 
 const MAX_REASONABLE_BOUNDS_SPAN_DEG = 8;
