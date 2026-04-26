@@ -6,6 +6,33 @@ Format: [verzija] - YYYY-MM-DD
 
 ---
 
+## [v2.4-gpt] - 2026-04-27
+
+### Dodano
+
+- Veja `gpt` za delo enega AI agenta brez neposrednega spreminjanja `main`.
+- `js/parcel-guard.js` — varnostni sloj za parcele in Leaflet:
+  - diagnostika GeoJSON koordinat iz IndexedDB;
+  - zaznava projekcijskih koordinat namesto WGS84;
+  - zaznava verjetno obrnjenih `[lat,lng]` koordinat;
+  - zaščita pred slabim `fitBounds`, da klik na parcelo ne vrže karte v črnino.
+- `docs/BRANCHING.md` — predlog strukture vej za več agentov.
+
+### Spremenjeno
+
+- `js/map.js` je utrjen proti napačnim/sumljivim koordinatam:
+  - preskoči neveljavne parcele;
+  - ne izvede `fitBounds`, če je bbox neveljaven ali prevelik;
+  - preveri GPS/vehicle koordinate pred premikom markerja.
+- `sw.js` dvignjen na `agrotracker-app-v4`, dodan `js/parcel-guard.js` v app shell.
+
+### Opombe
+
+- PWA trenutno še vedno uvaža samo `.geojson`/`.json`, ne neposredno GERK `.zip`/`.shp`.
+- GERK SHP/ZIP je treba pred uvozom pretvoriti v GeoJSON EPSG:4326.
+
+---
+
 ## [v2.3] - 2026-04-26
 
 ### Dodano
