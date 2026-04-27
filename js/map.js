@@ -71,8 +71,11 @@ export class MapController {
       { maxZoom: 20, maxNativeZoom: 19 });
     this.sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       { maxZoom: 20, maxNativeZoom: 19 });
-    this.sat.addTo(this.map);      // začnemo na satelitu — bolj koristno kmeti
-    this.satOn = true;
+
+    // V testni GPT veji začnemo z OSM. Satelit je uporaben na njivi,
+    // ampak pri debugiranju zna Esri tile strežnik na telefonu počrniti ali viseti.
+    this.osm.addTo(this.map);
+    this.satOn = false;
 
     this.parcelLayer = L.layerGroup().addTo(this.map);
     this.coverageLayer = L.layerGroup().addTo(this.map);
