@@ -162,7 +162,7 @@ export class MapController {
         color: this.paintColor,
         weight: this._weightPx(widthM),
         opacity: this.paintOpacity,
-        lineCap: 'round', lineJoin: 'round',
+        lineCap: 'butt', lineJoin: 'round', // konci odsekani, ovinki zaobljeni
         interactive: false
       }).addTo(this.coverageLayer);
       this.runs.push({ line, widthM });

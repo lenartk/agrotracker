@@ -147,3 +147,32 @@ Preprosto dodati:
 - **Večji JSON-i (presek MTU)** — uvesti fragmentacijo: `{"t":"ch","n":1,"of":3,"d":"..."}`
 - **Binary protokol** — za boljšo učinkovitost, a se izgubi prozornost debuga
 - **Ukazi proti stroju** — telefon → ESP → RS485: `{"c":"relay","id":"valve","on":1}` → ESP prebere in pošlje v RS485 `RELAY:valve:1\n`
+
+
+---
+
+## RS485 — SEJALNICA (binarni protokol, pasivno poslušanje)
+
+Modul se obesi **paralelno na obstoječo RS485 linijo** med backendom
+(`sejalnica_v332_rtos`) in kabino (`sejalnica_kabina_v279_rtos`):
+A→A, B→B, GND→GND. **DE/RE je trajno LOW — modul busu nikoli ne piše**,
+zato ne more zmotiti delovanja stroja.
+
+- Baud: **57600 8N1**
+- Frame: `[0xAA][TIP][LEN][PAYLOAD…][CRC8]`, CRC8 poly 0x31 init 0x00 čez TIP+LEN+PAYLOAD
+- Structi: `firmware/src/sejalnica_proto.h` (kopija iz sejalnica repo `shared/rs485_proto.h`
+  — ob spremembi žice v sejalnici posodobi oboje; LEN preverjanje + CRC ščitita
+  pred napačno interpretacijo)
+
+| Frame | Vir | Uporaba v modulu |
+|---|---|---|
+| 0x01 status (45 B) | backend → kabina | `active` = actualRPM > 0.5 && !isLifted; `flow` = actualKgHa; `lift`, `alarm` (bitmask), `mspd` = filteredSpeedKmh, `marea` = sessionAreaHa |
+| 0x02 settings (57 B) | kabina → backend | `w` = workingWidthM; `set` = setKgHa |
+
+Telemetrija (`tel`) dobi nova polja: `lift` (0/1), `alarm` (bit0 noSpeed, bit1 noRoller,
+bit2 stalled, bit3 speedTooLow, bit4 invalidParams), `mspd`, `marea`, `set`.
+PWA prikaže status stroja: **SEJE / DVIGNJEN / ALARM / MIRUJE**. Barvanje pokritosti
+je vezano na `active` — pri dvigu na ozari se barvanje samodejno ustavi.
+
+Generični tekstovni `KEY:VALUE\n` protokol še vedno deluje (oba parserja tečeta
+sočasno na istem streamu) — za druge/prihodnje stroje.

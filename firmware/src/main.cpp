@@ -5,14 +5,17 @@
 //   1. BLE GATT strežnik (Nordic-like custom service).
 //      Telefon se poveže in prejema telemetrijo (JSON) preko notify.
 //   2. GPS (NEO-8M) preko UART2, NMEA parsanje s TinyGPSPlus.
-//   3. RS485 povezava na stroj (npr. sejalnica) preko UART1 (MAX485 driver).
-//      Sprejema preproste tekstovne ukaze (ACTIVE:1\n, WIDTH:3.0\n, FLOW:42.5\n)
-//      in shrani trenutno stanje, ki ga vključi v telemetrijo.
+//   3. RS485 na stroj preko UART1 (MAX485). Dva protokola hkrati:
+//      a) SEJALNICA binarni frame [0xAA][TIP][LEN][PAYLOAD][CRC8] @ 57600 —
+//         modul se PASIVNO obesi na obstoječo linijo backend<->kabina
+//         (DE trajno LOW, busu nič ne pošilja). Glej sejalnica_proto.h.
+//      b) generični tekstovni KEY:VALUE\n (ACTIVE:1, WIDTH:3.0, FLOW:42.5)
+//         za druge/prihodnje stroje.
 //   4. Periodično (2 Hz) pošlje JSON paket.
 //
 // Pinout (privzeto, ESP32 WROOM-32 DevKit):
 //   GPS       RX = GPIO16,  TX = GPIO17  (UART2), 9600 baud
-//   RS485     RO = GPIO25,  DI = GPIO26,  DE/RE = GPIO27  (UART1), 9600 baud
+//   RS485     RO = GPIO25,  DI = GPIO26,  DE/RE = GPIO27  (UART1), 57600 baud (= sejalnica)
 //   LED       GPIO2 (onboard) — stanje povezave
 //
 // Več informacij v docs/PROTOCOL.md
@@ -21,6 +24,7 @@
 #include <NimBLEDevice.h>
 #include <TinyGPSPlus.h>
 #include <ArduinoJson.h>
+#include "sejalnica_proto.h"
 
 // ----------- KONFIGURACIJA -----------
 #ifndef BLE_DEVICE_NAME
@@ -40,7 +44,9 @@
 #define RS485_RX_PIN    25
 #define RS485_TX_PIN    26
 #define RS485_DE_PIN    27
-#define RS485_BAUD      9600
+#ifndef RS485_BAUD
+#define RS485_BAUD      57600   // sejalnica linija; za druge stroje preglasi z build_flags
+#endif
 #define LED_PIN          2
 
 // Telemetrijski interval v ms
@@ -59,10 +65,16 @@ TinyGPSPlus gps;
 struct MachineState {
   bool active = false;
   float width_m = 3.0f;
-  float flow = NAN;               // lahko ostane NaN, če stroj ne pošilja
+  float flow = NAN;               // trenutna doza (sejalnica: actualKgHa)
   char machine_tag[16] = "sejalnica";
   uint32_t lastMsgMs = 0;
   bool rs485_ok = false;
+  // Sejalnica dodatno:
+  bool  lifted = false;
+  uint8_t alarms = 0;             // bitmask (bit0 noSpeed .. bit4 invalidParams)
+  float machSpeedKmh = NAN;       // hitrost, kot jo vidi stroj
+  float sessionAreaHa = NAN;      // površina, ki jo šteje stroj sam
+  float setKgHa = NAN;            // nastavljeni odmerek (iz kabine)
 } mach;
 
 // BLE
@@ -72,13 +84,15 @@ NimBLECharacteristic* rxChar = nullptr;
 NimBLECharacteristic* infoChar = nullptr;
 bool deviceConnected = false;
 
+void sendJson(const String& json); // forward — uporabljen v RxCallbacks
+
 class ServerCallbacks : public NimBLEServerCallbacks {
-  void onConnect(NimBLEServer* pServer, NimBLEConnInfo& info) override {
+  void onConnect(NimBLEServer* pServer) override {
     deviceConnected = true;
     digitalWrite(LED_PIN, HIGH);
     Serial.println("BLE: povezano");
   }
-  void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& info, int reason) override {
+  void onDisconnect(NimBLEServer* pServer) override {
     deviceConnected = false;
     digitalWrite(LED_PIN, LOW);
     Serial.println("BLE: odklopljeno, ponovni advertise");
@@ -87,7 +101,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
 };
 
 class RxCallbacks : public NimBLECharacteristicCallbacks {
-  void onWrite(NimBLECharacteristic* ch, NimBLEConnInfo& info) override {
+  void onWrite(NimBLECharacteristic* ch) override {
     std::string val = ch->getValue();
     if (val.empty()) return;
     Serial.printf("RX: %s\n", val.c_str());
@@ -126,6 +140,78 @@ void rs485Send(const String& s){
   rs485SetTx(false);
 }
 
+// ---- SEJALNICA binarni parser ----
+// Ob veljavnem statusu je stroj "aktiven", ko se valjček dejansko vrti in
+// sejalnica ni dvignjena — fizična resnica, neodvisna od načina/alarmov.
+static const float SEJ_ACTIVE_MIN_RPM = 0.5f;
+
+void handleSejStatus(const SejalnicaStatus& s){
+  mach.lastMsgMs = millis();
+  mach.rs485_ok = true;
+  mach.active = (s.actualRPM > SEJ_ACTIVE_MIN_RPM) && !s.isLifted;
+  mach.lifted = s.isLifted;
+  mach.flow = s.actualKgHa;
+  mach.machSpeedKmh = s.filteredSpeedKmh;
+  mach.sessionAreaHa = s.sessionAreaHa;
+  mach.alarms = (s.alarmNoSpeed      ? 1 : 0)
+              | (s.alarmNoRoller     ? 2 : 0)
+              | (s.alarmStalled      ? 4 : 0)
+              | (s.alarmSpeedTooLow  ? 8 : 0)
+              | (s.alarmInvalidParams? 16 : 0);
+}
+
+void handleSejSettings(const SejalnicaSettings& st){
+  mach.lastMsgMs = millis();
+  mach.rs485_ok = true;
+  if (st.workingWidthM > 0.1f && st.workingWidthM < 50.0f) mach.width_m = st.workingWidthM;
+  mach.setKgHa = st.setKgHa;
+}
+
+// State-machine za [0xAA][TIP][LEN][PAYLOAD][CRC8]; teče vzporedno z
+// ASCII line parserjem na istih bajtih (0xAA in binarni payload nista
+// printable, zato se ne mešata z KEY:VALUE vrsticami).
+void feedSejParser(uint8_t b){
+  enum class St : uint8_t { WAIT, TYPE, LEN, PAYLOAD, CRC };
+  static St st = St::WAIT;
+  static uint8_t type = 0, len = 0, idx = 0;
+  static uint8_t buf[64];
+
+  switch (st){
+    case St::WAIT:
+      if (b == SEJ_START_BYTE) st = St::TYPE;
+      break;
+    case St::TYPE:
+      type = b; st = St::LEN;
+      break;
+    case St::LEN:
+      len = b; idx = 0;
+      if (len > sizeof(buf)){ st = St::WAIT; break; }
+      st = (len == 0) ? St::CRC : St::PAYLOAD;
+      break;
+    case St::PAYLOAD:
+      buf[idx++] = b;
+      if (idx >= len) st = St::CRC;
+      break;
+    case St::CRC: {
+      uint8_t chk[2 + sizeof(buf)];
+      chk[0] = type; chk[1] = len;
+      memcpy(&chk[2], buf, len);
+      if (b == sejCrc8(chk, 2 + len)){
+        if (type == SEJ_TYPE_STATUS && len == sizeof(SejalnicaStatus)){
+          SejalnicaStatus s; memcpy(&s, buf, sizeof(s));
+          handleSejStatus(s);
+        } else if (type == SEJ_TYPE_SETTINGS && len == sizeof(SejalnicaSettings)){
+          SejalnicaSettings s; memcpy(&s, buf, sizeof(s));
+          handleSejSettings(s);
+        }
+        // druge tipe (ACK, sysinfo, service) ignoriramo
+      }
+      st = St::WAIT;
+      break;
+    }
+  }
+}
+
 // Preprost line-protocol parser: KEY:VALUE\n
 // Primeri:
 //   ACTIVE:1
@@ -155,12 +241,14 @@ void handleRs485Line(const String& line){
 void readRs485(){
   static String buf;
   while (RS485Serial.available()){
-    char c = RS485Serial.read();
+    uint8_t raw = RS485Serial.read();
+    feedSejParser(raw);              // sejalnica binarni protokol
+    char c = (char)raw;              // generični tekstovni protokol
     if (c == '\r') continue;
     if (c == '\n'){
       if (buf.length()) handleRs485Line(buf);
       buf = "";
-    } else {
+    } else if (c >= 32 && c < 127){  // samo printable — binarni bajti ne smetijo
       if (buf.length() < 120) buf += c;
     }
   }
@@ -188,6 +276,13 @@ void sendTelemetry(){
   doc["w"] = mach.width_m;
   doc["rs485_ok"] = mach.rs485_ok ? 1 : 0;
   if (!isnan(mach.flow)) doc["flow"] = mach.flow;
+  if (mach.rs485_ok){
+    doc["lift"] = mach.lifted ? 1 : 0;
+    doc["alarm"] = mach.alarms;
+    if (!isnan(mach.machSpeedKmh)) doc["mspd"] = mach.machSpeedKmh;
+    if (!isnan(mach.sessionAreaHa)) doc["marea"] = mach.sessionAreaHa;
+    if (!isnan(mach.setKgHa)) doc["set"] = mach.setKgHa;
+  }
   String out; out.reserve(160);
   serializeJson(doc, out);
   sendJson(out);
@@ -245,7 +340,7 @@ void setup(){
   NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
   adv->addServiceUUID(SVC_UUID);
   adv->setName(BLE_DEVICE_NAME);
-  adv->enableScanResponse(true);
+  adv->setScanResponse(true);
   NimBLEDevice::startAdvertising();
 
   Serial.println("BLE advertise zagnan, čakam povezavo...");

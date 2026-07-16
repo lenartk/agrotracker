@@ -6,6 +6,35 @@ Format: [verzija] - YYYY-MM-DD
 
 ---
 
+## [v3.2] - 2026-07-16
+
+### Dodano — združljivost s sejalnico
+
+- Firmware zdaj razume **binarni RS485 protokol sejalnice** (`[0xAA][TIP][LEN][PAYLOAD][CRC8]`
+  @ 57600) — modul se pasivno obesi na obstoječo linijo backend↔kabina, DE trajno LOW
+  (busu nič ne pošilja, stroj brez tveganja). `firmware/src/sejalnica_proto.h`.
+- Mapiranje: aktiven = valjček se vrti (actualRPM > 0.5) in ni dvignjena; širina iz
+  kabininih nastavitev (workingWidthM); pretok = actualKgHa; alarmi kot bitmask.
+  Barvanje pokritosti se ob dvigu na ozari samodejno ustavi.
+- Nova telemetrijska polja: `lift`, `alarm`, `mspd` (hitrost stroja), `marea`
+  (površina, ki jo šteje stroj), `set` (nastavljeni kg/ha).
+- PWA: status stroja na karti — **SEJE / DVIGNJEN / ALARM / MIRUJE** (prej se
+  polje "Stroj" ni nikoli polnilo).
+- Generični `KEY:VALUE` protokol ohranjen (oba parserja sočasno).
+
+### Popravljeno
+
+- **Firmware se sploh ni prevedel** (pisan za NimBLE 2.x API ob pinu ^1.4.1 +
+  manjkajoča forward deklaracija) — prilagojen na NimBLE 1.4, `pio run` zelen.
+  Očitno nikoli zbuildan.
+- Track: konci črte **odsekani** (lineCap butt), ovinki ostajajo zaobljeni.
+
+### Tehnično
+
+- `APP_CACHE` v6 → v7
+
+---
+
 ## [v3.1] - 2026-07-16
 
 ### Popravljeno

@@ -30,7 +30,7 @@ const state = {
   session: null,
   map: null,
   guidance: new Guidance(),
-  telemetry: { active: null, width: null, flow: null, rs485ok: false, machine: null },
+  telemetry: { active: null, width: null, flow: null, rs485ok: false, machine: null, lifted: null, alarm: 0 },
   online: navigator.onLine,
   tileDownload: null,  // {abort, done, total} ko teče predprenos
   settings: {
@@ -114,6 +114,8 @@ async function init(){
     if (typeof m.flow === 'number') state.telemetry.flow = m.flow;
     if (typeof m.mach === 'string') state.telemetry.machine = m.mach;
     if (typeof m.rs485_ok === 'number') state.telemetry.rs485ok = !!m.rs485_ok;
+    if (typeof m.lift === 'number') state.telemetry.lifted = !!m.lift;
+    if (typeof m.alarm === 'number') state.telemetry.alarm = m.alarm;
     refreshTelemetryUI();
   });
 
@@ -902,6 +904,22 @@ function refreshTelemetryUI(){
   // Flow
   if ($('#flowVal') && state.telemetry.flow != null){
     $('#flowVal').textContent = state.telemetry.flow.toFixed(1);
+  }
+  // Status stroja (sejalnica preko BLE): ALARM > DVIGNJEN > SEJE > MIRUJE
+  const ms = $('#machineState');
+  if (ms){
+    const t = state.telemetry;
+    if (!ble.connected || !t.rs485ok){
+      ms.textContent = '—'; ms.style.color = '';
+    } else if (t.alarm){
+      ms.textContent = 'ALARM'; ms.style.color = 'var(--danger)';
+    } else if (t.lifted){
+      ms.textContent = 'DVIGNJEN'; ms.style.color = 'var(--warn)';
+    } else if (t.active){
+      ms.textContent = 'SEJE'; ms.style.color = 'var(--ok)';
+    } else {
+      ms.textContent = 'MIRUJE'; ms.style.color = '';
+    }
   }
 }
 
