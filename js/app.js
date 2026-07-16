@@ -4,7 +4,8 @@
 //  - povezava GPS + BLE + karta + storage
 //  - UI event wiring
 
-import { OPERATIONS, MACHINES, DEFAULTS } from './constants.js';
+import { OPERATIONS, MACHINES, DEFAULTS, GUIDANCE } from './constants.js';
+import { Guidance, lineLabel } from './guidance.js';
 import { MapController } from './map.js';
 import { gps } from './gps.js';
 import { ble } from './ble.js';
@@ -28,6 +29,7 @@ const state = {
   parcels: [],
   session: null,
   map: null,
+  guidance: new Guidance(),
   telemetry: { active: null, width: null, flow: null, rs485ok: false, machine: null },
   online: navigator.onLine,
   tileDownload: null,  // {abort, done, total} ko teče predprenos
@@ -39,6 +41,7 @@ const state = {
     autoSelectParcel: true,
     useBleMachineActive: true,
     useBleWidth: true,
+    guidanceBeep: false,
   },
   // Home
   selectedOpId: 'seed',
@@ -70,6 +73,7 @@ function showView(name){
   if (name === 'map' && state.map){
     setTimeout(() => state.map.map && state.map.map.invalidateSize(), 50);
   }
+  if (name === 'home') renderHome();
   if (name === 'history') renderHistory();
   if (name === 'settings') renderSettings();
 }
@@ -227,6 +231,43 @@ function renderHome(){
   // Start button enabled?
   const startBtn = $('#homeStartBtn');
   startBtn.disabled = !(state.selectedOpId && state.selectedMachineId);
+
+  renderSeasonStats().catch(()=>{});
+}
+
+// Statistika tekoče sezone (koledarsko leto) po operacijah
+async function renderSeasonStats(){
+  const year = new Date().getFullYear();
+  $('#seasonYear').textContent = year;
+  const all = await savedSessions();
+  const inYear = all.filter(s => new Date(s.startedAt).getFullYear() === year);
+  const grid = $('#seasonGrid');
+  if (!inYear.length){
+    grid.innerHTML = '<div class="empty-state small">Še ni podatkov za to leto.</div>';
+    return;
+  }
+  const byOp = {};
+  let totalHa = 0, totalMs = 0;
+  for (const s of inYear){
+    const id = s.operation?.id || 'custom';
+    byOp[id] = byOp[id] || { op: s.operation, ha: 0, n: 0 };
+    byOp[id].ha += s.coveredHa || 0;
+    byOp[id].n += 1;
+    totalHa += s.coveredHa || 0;
+    totalMs += s.durationMs || 0;
+  }
+  grid.innerHTML = Object.values(byOp).map(x => `
+    <div class="season-item" style="border-left-color:${x.op?.color || '#22c55e'}">
+      <div class="season-op">${x.op?.icon || ''} ${escapeHtml(x.op?.name || '?')}</div>
+      <div class="season-ha">${x.ha.toFixed(1)} <span>ha</span></div>
+      <div class="season-n">${x.n}× </div>
+    </div>
+  `).join('') + `
+    <div class="season-item total">
+      <div class="season-op">Skupaj</div>
+      <div class="season-ha">${totalHa.toFixed(1)} <span>ha</span></div>
+      <div class="season-n">${formatDuration(totalMs)}</div>
+    </div>`;
 }
 
 function autoPickMachineForOp(){
@@ -329,6 +370,159 @@ function wireMap(){
   };
   $('#pauseBtn').onclick = () => pauseSession();
   $('#stopBtn').onclick = () => confirmStopSession();
+
+  initLightbar();
+  $('#mapAbBtn').onclick = () => onAbButton();
+}
+
+// ============ AB GUIDANCE (lightbar) ============
+let _glRenderKey = null;
+let _lastBeepAt = 0;
+let _audioCtx = null;
+
+function initLightbar(){
+  for (const side of ['lbDotsL', 'lbDotsR']){
+    const wrap = document.getElementById(side);
+    wrap.innerHTML = '';
+    for (let i = 1; i <= GUIDANCE.dots; i++){
+      const d = document.createElement('div');
+      d.className = 'lb-dot d' + i;
+      wrap.appendChild(d);
+    }
+  }
+}
+
+function updateAbBtn(){
+  const g = state.guidance;
+  const btn = $('#mapAbBtn');
+  if (g.active){ btn.textContent = '✕AB'; btn.className = 'iconbtn glass ab setB'; }
+  else if (g.a){ btn.textContent = '→B'; btn.className = 'iconbtn glass ab setA'; }
+  else { btn.textContent = 'A·B'; btn.className = 'iconbtn glass ab'; }
+}
+
+function onAbButton(){
+  const g = state.guidance;
+  const f = gps.lastFix;
+  if (!g.a){
+    if (!f){ toast('Ni GPS pozicije.'); return; }
+    g.setA(f);
+    state.map.clearGuidance();
+    state.map.setAbMarker('A', [f.lat, f.lng]);
+    toast('Točka A. Zapelji do konca linije in pritisni →B.', 3500);
+  } else if (!g.active){
+    if (!f){ toast('Ni GPS pozicije.'); return; }
+    if (!g.setB(f)){ toast('Premalo razmika od A (min 5 m).'); return; }
+    g.widthM = effectiveWidthM();
+    state.map.setAbMarker('B', [f.lat, f.lng]);
+    guidanceEnable();
+    saveAbToParcel(g.toJSON());
+    toast('AB linija nastavljena.');
+  } else {
+    if (!confirm('Odstrani AB linijo?')) return;
+    g.reset();
+    guidanceDisable();
+    saveAbToParcel(null);
+    toast('AB linija odstranjena.');
+  }
+  updateAbBtn();
+}
+
+function guidanceEnable(){
+  const g = state.guidance;
+  if (state.session) state.session.abLine = g.toJSON();
+  _glRenderKey = null; // forsira re-render linij ob naslednjem fixu
+  const idx = gps.lastFix ? (g.update(gps.lastFix, null)?.lineIdx ?? 0) : 0;
+  state.map.setGuidanceLines(g.getLines(idx, GUIDANCE.linesEachSide), idx);
+  if (g.a) state.map.setAbMarker('A', [g.a.lat, g.a.lng]);
+  if (g.b) state.map.setAbMarker('B', [g.b.lat, g.b.lng]);
+  $('#view-map').classList.add('guidance-on');
+}
+
+function guidanceDisable(){
+  if (state.session) state.session.abLine = null;
+  state.map.clearGuidance();
+  $('#view-map').classList.remove('guidance-on');
+  _glRenderKey = null;
+}
+
+// AB linijo shranimo na izbrano parcelo — naslednja seja na njej jo samodejno naloži.
+async function saveAbToParcel(ab){
+  const pid = state.session?.parcel?.id || state.selectedParcelId;
+  if (!pid) return;
+  const p = state.parcels.find(x => x.id === pid);
+  if (!p) return;
+  p.abLine = ab;
+  try { await saveParcel(p); } catch (e){ console.warn(e); }
+}
+
+function guidanceOnFix(fix){
+  const g = state.guidance;
+  if (!g.active) return;
+  g.widthM = effectiveWidthM();
+  const r = g.update(fix, fix.headingDeg);
+  updateLightbar(r);
+
+  // Linije re-rendamo le ob spremembi aktivne linije ali širine
+  const key = r.lineIdx + ':' + g.widthM.toFixed(2);
+  if (key !== _glRenderKey){
+    _glRenderKey = key;
+    state.map.setGuidanceLines(g.getLines(r.lineIdx, GUIDANCE.linesEachSide), r.lineIdx);
+  }
+
+  const offCm = Math.abs(r.steerM) * 100;
+  if (state.settings.guidanceBeep && offCm > GUIDANCE.warnCm &&
+      Date.now() - _lastBeepAt > GUIDANCE.beepEveryMs){
+    _lastBeepAt = Date.now();
+    beep();
+  }
+}
+
+function updateLightbar(r){
+  const offCm = r.steerM * 100; // + = zavij desno
+  const absCm = Math.abs(offCm);
+
+  // Številka: pod 1 m v cm, nad tem v m
+  if (absCm < 100){
+    $('#lbXte').textContent = absCm.toFixed(0);
+    $('#lbUnit').textContent = 'cm';
+  } else {
+    $('#lbXte').textContent = (absCm / 100).toFixed(1);
+    $('#lbUnit').textContent = 'm';
+  }
+  $('#lbLine').textContent = lineLabel(r.lineIdx) + (r.flipped ? ' ↩' : '');
+
+  // Puščica pove, kam zaviti; barva resnost odklona
+  const steerEl = $('#lbSteer');
+  if (absCm <= GUIDANCE.okCm){ steerEl.textContent = '●'; steerEl.className = 'lb-steer'; }
+  else {
+    steerEl.textContent = offCm > 0 ? '→' : '←';
+    steerEl.className = 'lb-steer ' + (absCm > GUIDANCE.warnCm ? 'bad' : 'warn');
+  }
+
+  // Pike gorijo na strani, kamor moraš zaviti (več pik = večji odklon)
+  const litCount = Math.min(GUIDANCE.dots, Math.round(absCm / GUIDANCE.cmPerDot));
+  const litSide = offCm > 0 ? 'lbDotsR' : 'lbDotsL';
+  for (const side of ['lbDotsL', 'lbDotsR']){
+    const dots = document.getElementById(side).children;
+    for (let i = 0; i < dots.length; i++){
+      dots[i].classList.toggle('on', side === litSide && absCm > GUIDANCE.okCm && i < litCount);
+    }
+  }
+}
+
+// Kratek pisk brez zvočnih datotek (Web Audio)
+function beep(){
+  try {
+    _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = _audioCtx.createOscillator();
+    const gn = _audioCtx.createGain();
+    o.type = 'square';
+    o.frequency.value = 880;
+    gn.gain.value = 0.12;
+    o.connect(gn); gn.connect(_audioCtx.destination);
+    o.start();
+    o.stop(_audioCtx.currentTime + 0.12);
+  } catch (e){ /* zvok ni kritičen */ }
 }
 
 // ============ DRAWER (map view side menu) ============
@@ -396,6 +590,11 @@ function renderDrawer(){
     $('#drawerWidth').textContent = effectiveWidthM().toFixed(1) + ' m';
     persistSettings();
   };
+  $('#drawerGuideBeep').checked = state.settings.guidanceBeep;
+  $('#drawerGuideBeep').onchange = e => {
+    state.settings.guidanceBeep = e.target.checked;
+    persistSettings();
+  };
   $$('#drawerGpsRadios input[type=radio]').forEach(r => {
     r.onchange = () => { if (r.checked) setGpsSource(r.value); };
   });
@@ -458,6 +657,20 @@ function startSession(){
   state.map.setPaintStyle(op.color, Math.min(1, Math.max(0.05, finalOpacity)));
   state.map.clearCoverage();
 
+  // "Kje sem že bil": pokritost prejšnjih sej iste operacije na tej parceli (zbledelo)
+  state.map.clearPrevCoverage();
+  if (parcel){
+    savedSessions().then(all => {
+      const prev = all.filter(x => x.parcel?.id === parcel.id && x.operation?.id === op.id);
+      let strips = prev.flatMap(x => x.strips || []);
+      if (strips.length > 8000) strips = strips.slice(-8000); // ponytail: varovalka za render, starejše odrežemo
+      if (strips.length){
+        state.map.loadPrevCoverage(strips, op.color);
+        toast(`Prejšnja pokritost: ${prev.length} sej.`);
+      }
+    }).catch(()=>{});
+  }
+
   // Naslov na mapi
   $('#mapParcelName').textContent = parcel ? parcel.name : '—';
   $('#mapMachineName').textContent = `${op.icon} ${op.name} • ${machine.name} • ${effectiveWidthM().toFixed(1)} m`;
@@ -476,6 +689,16 @@ function startSession(){
     gps.setSimPosition(c);
     state.map.setVehicleLatLng([c.lat, c.lng]);
   }
+
+  // AB linija: nova seja začne s čisto; če jo parcela ima shranjeno, jo naloži
+  state.guidance.reset();
+  guidanceDisable();
+  if (parcel?.abLine && state.guidance.load(parcel.abLine)){
+    state.guidance.widthM = effectiveWidthM();
+    guidanceEnable();
+    toast('AB linija naložena s parcele.');
+  }
+  updateAbBtn();
 
   setTrackingUI('running');
   toast('Seja začeta: ' + op.name);
@@ -578,6 +801,9 @@ function onFix(fix){
   $('#gpsAccuracy').textContent = fix.accuracyM ? '±' + fix.accuracyM.toFixed(0) + 'm' : '—';
   refreshGpsPill(fix);
 
+  // AB vodenje (lightbar)
+  guidanceOnFix(fix);
+
   // Če seja teče, dodaj fix v track + morda nariši trak
   if (state.session && state.session.state === 'running'){
     const active = effectiveMachineActive();
@@ -609,9 +835,19 @@ function updateMapStats(){
     const pct = Math.min(100, Math.round((s.coveredHa / s.parcel.ha) * 100));
     $('#pctVal').textContent = pct + '%';
     $('#progressFill').style.width = pct + '%';
+    // Preostalo + ocena časa iz trenutne hitrosti in širine
+    const remainHa = Math.max(0, s.parcel.ha - s.coveredHa);
+    $('#remainVal').textContent = remainHa.toFixed(2);
+    const spd = gps.lastFix?.spdKmh || 0;
+    const haPerH = spd * effectiveWidthM() / 10; // km/h * m = 1000 m²/h = 0.1 ha/h
+    $('#etaVal').textContent = (remainHa > 0.005 && haPerH > 0.05)
+      ? formatDuration(remainHa / haPerH * 3600000)
+      : (remainHa <= 0.005 ? '✓' : '—');
   } else {
     $('#pctVal').textContent = '—';
     $('#progressFill').style.width = '0%';
+    $('#remainVal').textContent = '—';
+    $('#etaVal').textContent = '—';
   }
   const durMs = s.activeMsAccum + (s.lastResumeAt ? Date.now() - s.lastResumeAt : 0);
   $('#durVal').textContent = formatDuration(durMs);
@@ -716,9 +952,27 @@ async function persistSettings(){
 }
 
 // ============ HISTORY VIEW ============
+let _historyParcelFilter = '';
+
 async function renderHistory(){
   const list = $('#historyList');
-  const sessions = await savedSessions();
+  let sessions = await savedSessions();
+
+  // Filter po parceli + povzetek
+  const sel = $('#historyParcelFilter');
+  const parcelIds = [...new Map(sessions.filter(s => s.parcel).map(s => [s.parcel.id, s.parcel.name])).entries()];
+  sel.innerHTML = '<option value="">Vse parcele</option>' +
+    parcelIds.map(([id, name]) => `<option value="${id}" ${id === _historyParcelFilter ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('');
+  sel.onchange = () => { _historyParcelFilter = sel.value; renderHistory(); };
+
+  if (_historyParcelFilter) sessions = sessions.filter(s => s.parcel?.id === _historyParcelFilter);
+
+  const sumHa = sessions.reduce((a, s) => a + (s.coveredHa || 0), 0);
+  const sumMs = sessions.reduce((a, s) => a + (s.durationMs || 0), 0);
+  $('#historySummary').textContent = sessions.length
+    ? `${sessions.length} sej • ${sumHa.toFixed(1)} ha • ${formatDuration(sumMs)}`
+    : '—';
+
   if (!sessions.length){
     list.innerHTML = `
       <div class="empty-state">
@@ -818,6 +1072,44 @@ async function exportAllSessionsAsGeoJSON(){
   const blob = new Blob([JSON.stringify({ type: 'FeatureCollection', features }, null, 2)], { type: 'application/geo+json' });
   downloadBlob(blob, `agrotracker-seje-${Date.now()}.geojson`);
   toast('Izvoženo ' + all.length + ' sej');
+}
+
+// CSV evidenca vseh sej — za preglednice, poročila, precizno kmetijstvo
+async function exportSessionsCSV(){
+  const all = await savedSessions();
+  if (!all.length){ toast('Ni sej'); return; }
+  const esc = (v) => {
+    const s = String(v ?? '');
+    return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const rows = [[
+    'datum', 'zacetek', 'konec', 'trajanje_min', 'operacija', 'stroj', 'sirina_m',
+    'parcela', 'parcela_ha', 'obdelano_ha', 'razdalja_km', 'prehodi', 'poraba_skupaj', 'enota', 'opomba'
+  ]];
+  for (const s of all){
+    const d = new Date(s.startedAt);
+    rows.push([
+      d.toLocaleDateString('sl-SI'),
+      d.toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' }),
+      s.endedAt ? new Date(s.endedAt).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' }) : '',
+      ((s.durationMs || 0) / 60000).toFixed(0),
+      s.operation?.name || '',
+      s.machine?.name || '',
+      s.machine?.width ?? '',
+      s.parcel?.name || '',
+      s.parcel?.ha != null ? s.parcel.ha.toFixed(2) : '',
+      (s.coveredHa || 0).toFixed(3),
+      ((s.distanceM || 0) / 1000).toFixed(2),
+      s.passes || 0,
+      s.flowTotal != null ? s.flowTotal.toFixed(1) : '',
+      s.operation?.unit || '',
+      s.note || ''
+    ]);
+  }
+  // ponytail: podpičje kot ločilo — slovenski Excel ga pričakuje
+  const csv = '﻿' + rows.map(r => r.map(esc).join(';')).join('\r\n');
+  downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `agrotracker-evidenca-${new Date().toISOString().slice(0,10)}.csv`);
+  toast('CSV izvožen: ' + all.length + ' sej');
 }
 
 function sessionToGeoJSON(s){
@@ -926,6 +1218,7 @@ function wireSettingsView(){
     renderSettings();
   };
   $('#settingsExportAllBtn').onclick = () => exportAllSessionsAsGeoJSON();
+  $('#settingsExportCsvBtn').onclick = () => exportSessionsCSV();
 
   // Modal close
   $('#modalCloseBtn').onclick = closeModal;

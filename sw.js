@@ -4,7 +4,7 @@
 //   - Zemljevid tile-i — network-first z dolgotrajnim cache-om (za parcele, ki si jih že obiskal)
 //   - Vse ostalo — cache-first z network fallback-om
 
-const APP_CACHE = 'agrotracker-app-v3';
+const APP_CACHE = 'agrotracker-app-v5';
 const TILE_CACHE = 'agrotracker-tiles-v1';
 
 const SHELL = [
@@ -21,6 +21,7 @@ const SHELL = [
   './js/map.js',
   './js/session.js',
   './js/offline.js',
+  './js/guidance.js',
   './data/demo-parcels.geojson',
   './icons/icon-192.png',
   './icons/icon-512.png',

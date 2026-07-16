@@ -2,10 +2,10 @@
 
 Sledenje obdelanim površinam na kmetiji. PWA (telefon + PC), ESP32 modul na stroju, GPS + BLE + RS485.
 
-**Verzija:** v2.1 (april 2026)
+**Verzija:** v3.0 (julij 2026)
 **Repo:** `github.com/lenartk/agrotracker`
 **Live:** `https://lenartk.github.io/agrotracker/`
-**Status:** PWA deployed, čaka prvi test na terenu
+**Status:** v3.0 lokalno pripravljena (AB vodenje + lightbar + evidenca + nov UI) — za upload na GitHub; terenski test še čaka
 
 ---
 
@@ -72,14 +72,24 @@ izvoz/uvoz
 
 ---
 
-## Trenutni status (kje sva ravno zdaj, april 2026)
+## Trenutni status (julij 2026, v3.0)
 
-**PWA**: deluje, deployed na GitHub Pages, namestljiva na Android Chrome
-**Test na terenu**: še NI — naslednji veliki korak
+**PWA**: v3.0 lokalno — AB vodenje z lightbarom (jedro AgriBus-NAVI), prejšnja pokritost,
+sezona statistika, CSV evidenca, preostalo+ETA, nov industrijski UI, nove ikone.
+**Upload**: v3.0 še NI na GitHub Pages — uploadaj mapo prek GitHub web vmesnika
+**Test na terenu**: še NI — naslednji veliki korak (zdaj z vodenjem še bolj smiseln)
 **ESP32 modul**: koda gotova, **strojna oprema še ni naročena/sestavljena**
 **Cloud sync**: NI implementiran
 **Desktop pregled**: NI specifičen layout (zaenkrat enak kot mobile)
 **Popravljanje sej po fact**: NI
+
+### v3.0 na kratko (kaj je novega za uporabo)
+
+1. Na karti pritisni `A·B` na začetku prve vožnje, pelji do konca, pritisni `→B`.
+2. Lightbar pokaže odklon v cm in kam zaviti; linije so narisane na karti.
+3. AB se zapomni na parceli — naslednjič se naloži sama.
+4. Ob začetku dela vidiš zbledelo, kje si isto delo že opravil (prejšnje seje).
+5. Domov: Sezona — koliko ha po opravilih letos. Nastavitve: Izvoz CSV za evidenco.
 
 ---
 

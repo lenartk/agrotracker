@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
 <title>AgroTracker</title>
-<meta name="theme-color" content="#0b0f0d" />
+<meta name="theme-color" content="#0a0d0b" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="AgroTracker" />
@@ -19,10 +19,22 @@
   <!-- ========== HOME VIEW ========== -->
   <section id="view-home" class="view active">
     <div class="home-header">
-      <div class="home-logo">🌱</div>
+      <div class="home-logo" aria-hidden="true">
+        <svg viewBox="0 0 46 46" xmlns="http://www.w3.org/2000/svg">
+          <rect width="46" height="46" fill="#10150f"/>
+          <g stroke="#22c55e" stroke-width="4" opacity=".85">
+            <line x1="-4" y1="16" x2="30" y2="50"/>
+            <line x1="4"  y1="8"  x2="42" y2="46"/>
+            <line x1="12" y1="0"  x2="50" y2="38"/>
+          </g>
+          <line x1="2" y1="36" x2="40" y2="-2" stroke="#f59e0b" stroke-width="3.4"/>
+          <circle cx="9"  cy="29" r="4.4" fill="#f59e0b" stroke="#fff" stroke-width="1.6"/>
+          <circle cx="33" cy="5"  r="4.4" fill="#f59e0b" stroke="#fff" stroke-width="1.6"/>
+        </svg>
+      </div>
       <div style="flex:1">
-        <div class="home-title">AgroTracker</div>
-        <div class="home-sub">Sledenje delu na parcelah</div>
+        <div class="home-title">AGRO<em>TRACKER</em></div>
+        <div class="home-sub">GPS vodenje · sledenje · evidenca — v3.0</div>
       </div>
       <button class="iconbtn circle" id="homeHistoryBtn" title="Zgodovina">📂</button>
       <button class="iconbtn circle" id="homeSettingsBtn" title="Nastavitve">⚙</button>
@@ -50,7 +62,12 @@
 
     <button class="start-btn" id="homeStartBtn">Začni sledenje</button>
 
-    <div class="section" style="margin-top:20px">
+    <div class="section" style="margin-top:20px" id="seasonSection">
+      <div class="section-label">Sezona <span id="seasonYear"></span></div>
+      <div class="season-grid" id="seasonGrid"><div class="empty-state small">Še ni podatkov.</div></div>
+    </div>
+
+    <div class="section">
       <div class="section-label">Hitro</div>
       <div class="quick-actions">
         <button class="quick-btn" id="homeHistoryBtn2" onclick="document.getElementById('homeHistoryBtn').click()"><span class="icon">📂</span><span>Zgodovina</span></button>
@@ -81,6 +98,17 @@
       </div>
     </div>
 
+    <!-- Lightbar — AB vodenje (viden samo, ko je AB linija nastavljena) -->
+    <div id="lightbar" class="lightbar glass">
+      <div class="lb-dots left" id="lbDotsL"></div>
+      <div class="lb-center">
+        <div class="lb-steer" id="lbSteer">●</div>
+        <div class="lb-xteval"><span id="lbXte">0</span><span class="lb-unit" id="lbUnit">cm</span></div>
+        <div class="lb-linenum" id="lbLine">AB</div>
+      </div>
+      <div class="lb-dots right" id="lbDotsR"></div>
+    </div>
+
     <div class="status-pills">
       <span class="pill" id="gpsPill"><span class="dot"></span>Brez GPS</span>
       <span class="pill" id="blePill"><span class="dot"></span>Brez stroja</span>
@@ -91,6 +119,7 @@
       <button class="iconbtn glass" id="mapCenterBtn" title="Na sredino">◎</button>
       <button class="iconbtn glass" id="mapTerrainBtn" title="Satelit / zemljevid">🗺</button>
       <button class="iconbtn glass" id="mapLayersBtn" title="Sredina ON/OFF">⊙</button>
+      <button class="iconbtn glass ab" id="mapAbBtn" title="AB vodilna linija">A·B</button>
     </div>
 
     <div class="map-bottom glass">
@@ -112,9 +141,10 @@
           <strong id="pctVal">—</strong>
         </div>
         <div class="progressbar"><div class="progressfill" id="progressFill"></div></div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px">
           <div class="stat"><div class="label">Prehodi</div><div class="value" id="passesVal">0</div></div>
-          <div class="stat"><div class="label">Pretok</div><div class="value"><span id="flowVal">—</span></div></div>
+          <div class="stat"><div class="label">Preostalo</div><div class="value"><span id="remainVal">—</span><span class="unit">ha</span></div></div>
+          <div class="stat"><div class="label">Še ~</div><div class="value" id="etaVal">—</div></div>
           <div class="stat"><div class="label">Stroj</div><div class="value" style="font-size:13px"><span id="machineState">—</span></div></div>
         </div>
       </div>
@@ -136,6 +166,7 @@
           <div class="rowline"><span class="small muted">Parcela</span><strong id="drawerParcel">—</strong></div>
           <div class="rowline"><span class="small muted">Širina</span><strong id="drawerWidth">—</strong></div>
           <div class="rowline"><span class="small muted">GPS vir</span><strong id="drawerGpsSource">—</strong></div>
+          <div class="rowline"><span class="small muted">Pretok</span><strong><span id="flowVal">—</span></strong></div>
         </div>
 
         <div class="card">
@@ -163,6 +194,7 @@
           <input type="range" id="drawerOpacity" min="0.10" max="0.80" step="0.02" value="0.38" />
           <div class="rowline tall"><span>Preglasi širino (m)</span></div>
           <input type="number" id="drawerWidthOverride" min="0.5" max="30" step="0.1" placeholder="samodejno" />
+          <label class="toggle" style="margin-top:10px"><span>Zvočni pisk ob odklonu</span><input type="checkbox" id="drawerGuideBeep"></label>
         </div>
 
         <div class="card">
@@ -184,6 +216,10 @@
       <button class="iconbtn" id="historyBackBtn">←</button>
       <div class="title">Zgodovina opravil</div>
       <button class="iconbtn" id="historyExportAllBtn" title="Izvozi vse">⇪</button>
+    </div>
+    <div class="history-tools">
+      <select id="historyParcelFilter"><option value="">Vse parcele</option></select>
+      <div class="history-summary" id="historySummary">—</div>
     </div>
     <div class="session-list" id="historyList"></div>
   </section>
@@ -244,6 +280,7 @@
       <div class="hint" style="margin-top:8px">Priporočilo: po vsakem opravilu na terenu izvozi GeoJSON kot varnostno kopijo (lahko deliš preko Drive, e-maila ipd.).</div>
       <div class="btn-row">
         <button class="minibtn" id="settingsExportAllBtn">Backup vseh sej</button>
+        <button class="minibtn" id="settingsExportCsvBtn">Izvoz CSV (evidenca)</button>
         <button class="minibtn danger" id="settingsResetSettingsBtn">Resetiraj nastavitve</button>
       </div>
     </div>
@@ -251,7 +288,7 @@
     <div class="card">
       <h3>ℹ O aplikaciji</h3>
       <div class="note">
-        AgroTracker v2 — PWA za sledenje obdelanim površinam.<br>
+        AgroTracker v3.0 — GPS vodenje (AB linije + lightbar), sledenje obdelanim površinam in evidenca opravil.<br>
         Povezava z ESP32 modulom preko Web Bluetooth.<br><br>
         <strong>Brskalnik:</strong> <span id="settingsBrowser" class="small muted"></span>
       </div>

@@ -27,6 +27,7 @@ export class Session {
 
     this.track = [];              // seznam GPS točk
     this.strips = [];              // seznam poligonov (lat-lng vogali)
+    this.abLine = null;           // {a:{lat,lng}, b:{lat,lng}} — AB vodilna linija, če je bila nastavljena
     this.coveredHa = 0;
     this.distanceM = 0;
     this.activeDistanceM = 0;     // razdalja, ko je stroj aktiven (requiresActive)
@@ -161,6 +162,7 @@ export class Session {
       machine: this.machine ? { id: this.machine.id, name: this.machine.name, width: this.machine.width, icon: this.machine.icon } : null,
       parcel: this.parcel ? { id: this.parcel.id, name: this.parcel.name, ha: this.parcel.ha, feature: this.parcel.feature || null } : null,
       note: this.note,
+      abLine: this.abLine,
       track: this.track,
       strips: this.strips,
       coveredHa: this.coveredHa,

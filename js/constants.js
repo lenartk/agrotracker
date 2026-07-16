@@ -107,6 +107,16 @@ export const BLE = {
   NAME_PREFIX: 'AgroESP'
 };
 
+// AB guidance (lightbar) parametri
+export const GUIDANCE = {
+  cmPerDot: 10,       // ena pika lightbar-a = 10 cm odklona  // ponytail: fiksna skala, nastavitev dodamo po terenski izkušnji
+  dots: 5,            // pik na vsako stran
+  okCm: 10,           // do tu zeleno
+  warnCm: 30,         // nad tem rdeče + pisk
+  beepEveryMs: 2500,  // najmanj toliko med piski
+  linesEachSide: 6    // koliko vzporednih linij rišemo na vsako stran aktivne
+};
+
 // Privzete vrednosti
 export const DEFAULTS = {
   center: [46.0515, 14.503],

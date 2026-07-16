@@ -133,12 +133,15 @@ Preden potrdiš spremembo, **vsaj `node --check` na vsako spremenjeno JS datotek
 6. **Commit message** v slogu obstoječih (kratek, slovensko, konkretno)
 7. **Povzemi za uporabnika** — kaj je narejeno, kaj testirati, kateri korak naprej
 
-## Trenutni status (april 2026)
+## Trenutni status (julij 2026)
 
-- v2.2 deployed na GitHub Pages
+- v3.0 lokalno pripravljena: AB vodenje + lightbar (`js/guidance.js`), prejšnja pokritost,
+  sezona statistika, CSV evidenca, nov industrijski UI, nove ikone
+- Na GitHub Pages je še v2.x — uporabnik mora uploadati prek GitHub web vmesnika
 - Prvi terenski test še ni izveden
-- Naslednji koraki: terenski test → popravljanje sej → desktop pregled → cloud sync (vrstni red v `docs/PROJECT.md`)
+- Naslednji koraki: upload → terenski test (z vodenjem) → popravljanje sej → cloud sync
 - ESP32 strojna oprema še ni naročena/sestavljena
+- Geometrijski test: `node tests/test_guidance.mjs`
 
 ## Komunikacija z uporabnikom
 

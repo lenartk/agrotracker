@@ -5,7 +5,7 @@ import { createStrip } from './geo.js';
 export class MapController {
   constructor(el, opts = {}){
     this.el = el;
-    this.map = L.map(el, { zoomControl: false, attributionControl: false, tap: true })
+    this.map = L.map(el, { zoomControl: false, attributionControl: false, tap: true, preferCanvas: true })
       .setView(opts.center || [46.0515, 14.503], opts.zoom || 16);
 
     this.osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -16,8 +16,11 @@ export class MapController {
     this.satOn = true;
 
     this.parcelLayer = L.layerGroup().addTo(this.map);
+    this.prevCoverageLayer = L.layerGroup().addTo(this.map); // pokritost prejšnjih sej (pod aktivno)
     this.coverageLayer = L.layerGroup().addTo(this.map);
     this.trackLayer = L.layerGroup().addTo(this.map);
+    this.guidanceLayer = L.layerGroup().addTo(this.map);
+    this._abMarkers = {};
 
     this.parcelRefs = []; // [{id, feat, layer}]
     this.selectedParcelId = null;
@@ -163,6 +166,56 @@ export class MapController {
     });
   }
 
+  // Pokritost prejšnjih sej — zbledel sloj "kje sem že bil"
+  loadPrevCoverage(stripPolygons, color){
+    if (!Array.isArray(stripPolygons)) return;
+    stripPolygons.forEach(poly => {
+      L.polygon(poly, {
+        color: 'transparent', fillColor: color,
+        fillOpacity: 0.14, stroke: false, interactive: false
+      }).addTo(this.prevCoverageLayer);
+    });
+  }
+
+  clearPrevCoverage(){
+    this.prevCoverageLayer.clearLayers();
+  }
+
+  // ---- AB guidance ----
+
+  // Nariše vzporedne vodilne linije; aktivna je poudarjena.
+  // lines: [{idx, pts: [[lat,lng],[lat,lng]]}]
+  setGuidanceLines(lines, activeIdx){
+    this.guidanceLayer.clearLayers();
+    lines.forEach(l => {
+      const isActive = l.idx === activeIdx;
+      L.polyline(l.pts, {
+        color: isActive ? '#f59e0b' : '#ffffff',
+        weight: isActive ? 4 : 1.5,
+        opacity: isActive ? 0.95 : 0.45,
+        dashArray: isActive ? null : '8,10',
+        interactive: false
+      }).addTo(this.guidanceLayer);
+    });
+    // AB markerja nazaj na vrh plasti
+    Object.values(this._abMarkers).forEach(m => m.addTo(this.guidanceLayer));
+  }
+
+  setAbMarker(label, latlng){
+    if (this._abMarkers[label]) this.guidanceLayer.removeLayer(this._abMarkers[label]);
+    const icon = L.divIcon({
+      className: '', iconSize: [28, 28], iconAnchor: [14, 14],
+      html: `<div class="ab-marker">${label}</div>`
+    });
+    this._abMarkers[label] = L.marker(latlng, { icon, interactive: false, zIndexOffset: 900 })
+      .addTo(this.guidanceLayer);
+  }
+
+  clearGuidance(){
+    this.guidanceLayer.clearLayers();
+    this._abMarkers = {};
+  }
+
   centerOn(latlng, zoom){
     this.map.setView(latlng, zoom || Math.max(this.map.getZoom(), 17));
   }
@@ -172,7 +225,8 @@ export class MapController {
     const size = this.map.getSize();
     const p = this.map.latLngToContainerPoint(latlng);
     const target = L.point(size.x / 2, size.y * 0.62);
-    const offset = target.subtract(p);
+    // panBy premakne CENTER za offset, zato p - target (obratno divergira!)
+    const offset = p.subtract(target);
     if (Math.abs(offset.x) > 2 || Math.abs(offset.y) > 2){
       this.map.panBy(offset, { animate: false });
     }
