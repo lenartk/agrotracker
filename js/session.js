@@ -67,6 +67,7 @@ export class Session {
   // Ali naj barvamo? Odvisno od operacije (requiresActive) in telemetrije iz stroja.
   shouldPaint(machineActive){
     if (this.state !== 'running') return false;
+    if (this.operation.noPaint) return false;   // "Prevoz" — samo pot
     if (this.operation.requiresActive){
       return !!machineActive;
     }

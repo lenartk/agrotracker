@@ -72,6 +72,19 @@ export const OPERATIONS = {
     requiresActive: true,
     defaultMachines: ['nakladalna', 'kombajn']
   },
+  transport: {
+    id: 'transport',
+    name: 'Prevoz',
+    icon: '🚚', svg: 'route',
+    color: '#94a3b8',
+    fillOpacity: 0.0,
+    valueLabel: 'Prevoženo',
+    valueUnit: 'km',
+    hint: 'Samo pot (tanka črta) — brez barvanja pokritosti.',
+    requiresActive: false,
+    noPaint: true,
+    defaultMachines: []
+  },
   custom: {
     id: 'custom',
     name: 'Drugo',

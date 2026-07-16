@@ -51,7 +51,8 @@ const state = {
   selectedOpId: 'seed',
   selectedMachineId: 'sejalnica',
   selectedParcelId: null,
-  note: ''
+  note: '',
+  manualWork: true   // ročno stikalo "stroj dela" (ko ni BLE signala)
 };
 
 // ============ UTIL ============
@@ -493,6 +494,11 @@ function wireHome(){
   $('#homeHistoryBtn2').onclick = () => showView('history');
   $('#homeSettingsBtn2').onclick = () => showView('settings');
   $('#homeInstallBtn').onclick = () => appInfo('V meniju brskalnika (⋮) izberi "Dodaj na začetni zaslon" oz. "Namesti aplikacijo".', 'Namestitev');
+  $('#homeMapBtn').onclick = () => {
+    ensureMap();
+    showView('map');
+    if (!state.session) $('#mapParcelName').textContent = 'Prosti pregled';
+  };
   $('#homeNote').addEventListener('input', e => state.note = e.target.value);
 
   $('#homeStartBtn').onclick = () => startSession();
@@ -589,6 +595,19 @@ function wireMap(){
 
   initLightbar();
   $('#mapAbBtn').onclick = () => onAbButton();
+
+  // Ročno stikalo barvanja (ko ni BLE signala iz stroja)
+  $('#machineStateBox').onclick = () => {
+    if (state.settings.useBleMachineActive && state.telemetry.active != null){
+      toast('Stanje prihaja iz stroja (BLE).');
+      return;
+    }
+    if (!state.session){ toast('Ni aktivne seje.'); return; }
+    state.manualWork = !state.manualWork;
+    navigator.vibrate?.(40);
+    toast(state.manualWork ? 'Barvanje VKLOPLJENO (stroj dela)' : 'Barvanje IZKLOPLJENO (samo pot)');
+    refreshTelemetryUI();
+  };
 }
 
 // ============ AB GUIDANCE (lightbar) ============
@@ -861,8 +880,8 @@ function effectiveMachineActive(){
   if (state.settings.useBleMachineActive && state.telemetry.active != null){
     return state.telemetry.active;
   }
-  // Sicer: če seja teče, je "aktivno". Za opcije requiresActive=false to sploh ni pomembno (paint vseeno).
-  return state.session ? state.session.state === 'running' : false;
+  // Brez signala iz stroja: ročno stikalo DELA/STOJI na karti
+  return (state.session ? state.session.state === 'running' : false) && state.manualWork;
 }
 
 // ============ SESSION LIFECYCLE ============
@@ -940,7 +959,9 @@ async function startSession(){
   }
   updateAbBtn();
 
+  state.manualWork = true; // nova seja: privzeto "stroj dela"
   setTrackingUI('running');
+  refreshTelemetryUI();
   toast('Seja začeta: ' + op.name);
   startAutoSaveTimer();
 }
@@ -1164,7 +1185,13 @@ function refreshTelemetryUI(){
   if (ms){
     const t = state.telemetry;
     if (!ble.connected || !t.rs485ok){
-      ms.textContent = '—'; ms.style.color = '';
+      // ročni način: stikalo DELA/STOJI (tap na ploščico)
+      if (state.session && state.session.state === 'running' && !state.session.operation.noPaint){
+        ms.textContent = state.manualWork ? 'DELA' : 'STOJI';
+        ms.style.color = state.manualWork ? 'var(--ok)' : 'var(--muted)';
+      } else {
+        ms.textContent = '—'; ms.style.color = '';
+      }
     } else if (t.alarm){
       ms.textContent = 'ALARM'; ms.style.color = 'var(--danger)';
     } else if (t.lifted){

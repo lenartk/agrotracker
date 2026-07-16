@@ -6,6 +6,27 @@ Format: [verzija] - YYYY-MM-DD
 
 ---
 
+## [v4.5] - 2026-07-17
+
+### Dodano — trije jasni načini vožnje
+
+1. **Prosta karta (brez beleženja)**: gumb "Odpri karto (brez beleženja)" na
+   Domov — pregled parcel in pozicije, nič se ne zapisuje.
+2. **Beleženje z delom**: kot doslej (pas pokritosti, ha, heatmap).
+3. **Beleženje brez stroja / z ugasnjenim**:
+   - **Ročno stikalo DELA/STOJI** — tap na ploščico "Stroj" na karti (ko ni
+     BLE signala): STOJI = riše se samo tanka pot, ha se ne šteje. Za delo
+     brez ESP32 modula.
+   - Nova operacija **"Prevoz"** — cela seja samo pot (evidenca km/časa,
+     brez pokritosti).
+
+### Tehnično
+
+- `OPERATIONS.transport` (noPaint), `session.shouldPaint` upošteva noPaint,
+  `effectiveMachineActive` upošteva ročno stikalo; `APP_CACHE` v14
+
+---
+
 ## [v4.4] - 2026-07-16
 
 ### Dodano — pot, heatmap intenzivnosti, opozorilo na prekrivanje
