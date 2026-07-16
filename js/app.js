@@ -32,7 +32,7 @@ const state = {
   map: null,
   guidance: new Guidance(),
   gerkLib: null,          // FeatureCollection vseh GERK-ov območja (lazy iz IndexedDB)
-  telemetry: { active: null, width: null, flow: null, rs485ok: false, machine: null, lifted: null, alarm: 0 },
+  telemetry: { active: null, width: null, flow: null, rs485ok: false, machine: null, lifted: null, alarm: 0, set: null },
   online: navigator.onLine,
   tileDownload: null,  // {abort, done, total} ko teče predprenos
   settings: {
@@ -148,6 +148,7 @@ async function init(){
     if (typeof m.rs485_ok === 'number') state.telemetry.rs485ok = !!m.rs485_ok;
     if (typeof m.lift === 'number') state.telemetry.lifted = !!m.lift;
     if (typeof m.alarm === 'number') state.telemetry.alarm = m.alarm;
+    if (typeof m.set === 'number') state.telemetry.set = m.set;
     refreshTelemetryUI();
   });
 
@@ -237,6 +238,59 @@ async function loadDemoParcels(){
       state.parcels.push(p);
     }
   } catch (e){ console.warn('Demo parcele niso bile naložene', e); }
+}
+
+// ============ PREKRIVANJE (kje sem že delal) ============
+// Groba mreža ~4 m celic pokritega območja — poceni opozorilo "tu si že delal".
+// ponytail: hevristika po srednici pasu; za cm natančnost bi rabili pravi
+// prostorski indeks — nadgradnja, če se na terenu izkaže potreba.
+const OVERLAP_CELL_M = 4;
+let _covGrid = new Set();
+let _lastOverlapToastAt = 0;
+let _overlapHits = 0; // debug/diagnostika
+
+function _cellKey(lat, lng){
+  const ky = Math.round(lat * 111320 / OVERLAP_CELL_M);
+  const kx = Math.round(lng * 111320 * Math.cos(lat * Math.PI / 180) / OVERLAP_CELL_M);
+  return ky + ':' + kx;
+}
+
+const OVERLAP_RECENT = 14; // celic "sveže sledi", ki se ne štejejo kot prekrivanje
+let _recentCells = [];
+
+function overlapResetAndSeed(prevStrips){
+  _covGrid = new Set();
+  _recentCells = [];
+  (prevStrips || []).forEach(quad => {
+    // vogali + središče traku — dovolj za opozorilo
+    let cx = 0, cy = 0;
+    quad.forEach(p => { cy += p[0]; cx += p[1]; _covGrid.add(_cellKey(p[0], p[1])); });
+    _covGrid.add(_cellKey(cy / quad.length, cx / quad.length));
+  });
+}
+
+// Označi srednico pobarvanega segmenta; prekrivanje = zadeta STARA pokritost
+// (celice sveže sledi — pravkar prevoženo — se ne štejejo, sicer bi alarmiralo
+// med normalno vožnjo naprej).
+function overlapMarkAndCheck(from, to){
+  const dLat = to.lat - from.lat, dLng = to.lng - from.lng;
+  const distM = Math.hypot(dLat * 111320, dLng * 111320 * Math.cos(from.lat * Math.PI / 180));
+  const steps = Math.max(1, Math.round(distM / (OVERLAP_CELL_M * 0.75)));
+  let overlap = false;
+  for (let i = 0; i <= steps; i++){
+    const k = _cellKey(from.lat + dLat * i / steps, from.lng + dLng * i / steps);
+    if (_covGrid.has(k)){
+      if (!_recentCells.includes(k)) overlap = true;
+    } else {
+      _covGrid.add(k);
+    }
+    if (_recentCells[_recentCells.length - 1] !== k){
+      _recentCells.push(k);
+      if (_recentCells.length > OVERLAP_RECENT) _recentCells.shift();
+    }
+  }
+  if (overlap) _overlapHits++;
+  return overlap;
 }
 
 // ============ GERK KNJIŽNICA ============
@@ -843,6 +897,7 @@ async function startSession(){
 
   // "Kje sem že bil": pokritost prejšnjih sej iste operacije na tej parceli (zbledelo)
   state.map.clearPrevCoverage();
+  overlapResetAndSeed(null);
   if (parcel){
     savedSessions().then(all => {
       const prev = all.filter(x => x.parcel?.id === parcel.id && x.operation?.id === op.id);
@@ -850,6 +905,7 @@ async function startSession(){
       if (strips.length > 8000) strips = strips.slice(-8000); // ponytail: varovalka za render, starejše odrežemo
       if (strips.length){
         state.map.loadPrevCoverage(strips, op.color);
+        overlapResetAndSeed(strips); // opozorilo dela tudi čez prejšnje seje
         toast(`Prejšnja pokritost: ${prev.length} sej.`);
       }
     }).catch(()=>{});
@@ -995,9 +1051,25 @@ function onFix(fix){
     const widthM = effectiveWidthM();
     const flow = state.telemetry.flow ?? null;
     const res = state.session.addFix(fix, active, widthM, flow);
+    // Tanka črta poti — vedno, tudi ko stroj ne dela (vidiš, kje si se samo vozil)
+    if (res.moved && res.moveFrom){
+      state.map.paintDrive(res.moveFrom, res.moveTo);
+    }
     if (res.painted && res.paintFrom && res.paintTo){
-      // Riši od zadnje barvane pozicije — zvezen trak brez lukenj
-      state.map.paintSegment(res.paintFrom, res.paintTo, widthM);
+      // intenzivnost = dejanski / nastavljeni odmerek (sejalnica: actualKgHa / setKgHa)
+      const setV = state.telemetry.set;
+      const intensity = (flow != null && setV > 0) ? flow / setV : null;
+      state.map.paintSegment(res.paintFrom, res.paintTo, widthM, intensity);
+
+      // opozorilo na prekrivanje ("tu si že delal")
+      if (overlapMarkAndCheck(res.paintFrom, res.paintTo)){
+        const nowMs = Date.now();
+        if (nowMs - _lastOverlapToastAt > 10000){
+          _lastOverlapToastAt = nowMs;
+          toast('Prekrivanje — tu si že delal.', 3000);
+          if (state.settings.guidanceBeep){ beep(); navigator.vibrate?.(120); }
+        }
+      }
     }
     updateMapStats();
   } else if (state.session && state.session.state === 'paused'){
@@ -1622,7 +1694,8 @@ async function importGeoJSON(gj){
 }
 
 // ============ EXPOSED FOR DEBUG ============
-window._app = { state, gps, ble, startSession, stopSession };
+window._app = { state, gps, ble, startSession, stopSession,
+  _dbg: { covGridSize: () => _covGrid.size, overlapHits: () => _overlapHits } };
 
 init().catch(err => {
   console.error('Init failed', err);

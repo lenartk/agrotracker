@@ -6,6 +6,33 @@ Format: [verzija] - YYYY-MM-DD
 
 ---
 
+## [v4.4] - 2026-07-16
+
+### Dodano — pot, heatmap intenzivnosti, opozorilo na prekrivanje
+
+- **Tanka bela črta poti** se med sejo riše VEDNO — vidiš, kje si se samo vozil;
+  obarvan pas ostaja samo tam, kjer je stroj dejansko delal.
+- **Heatmap intenzivnosti**: barva pasu po poročanju stroja — dejanski odmerek
+  proti nastavljenemu (sejalnica: actualKgHa/setKgHa). Svetleje = premalo,
+  osnovna barva = točno, temneje = preveč. Brez telemetrije: enotna barva.
+- **Opozorilo na prekrivanje**: ko z delujočim strojem zapelješ na že obdelano
+  (ta seja ali prejšnje na isti parceli) → "Prekrivanje — tu si že delal"
+  (+ pisk in vibracija, če je pisk vklopljen). Mreža ~4 m, sveža sled se ne šteje.
+- Pojasnilo: premik karte NIKOLI ne prekine beleženja — ustavi se samo
+  samodejno centriranje pogleda (gumb preimenovan v "Centriraj na vozilo").
+
+### Roadmap
+
+- **Strojni samodejni stop na že posejanem** (stroj bere pokritost): zahteva
+  TX modula na RS485 bus (zdaj namerno samo poslušalec), nov tip okvirja in
+  obravnavo v sejalnica firmware — načrtovano po prvem terenskem testu.
+
+### Tehnično
+
+- `APP_CACHE` v13
+
+---
+
 ## [v4.3] - 2026-07-16
 
 ### Spremenjeno — Google Maps vedenje karte

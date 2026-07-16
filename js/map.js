@@ -52,6 +52,7 @@ export class MapController {
           },
           parcels: { type: 'geojson', data: FC() },
           prevcov: { type: 'geojson', data: FC() },
+          drive:   { type: 'geojson', data: FC() },
           cov:     { type: 'geojson', data: FC() },
           guide:   { type: 'geojson', data: FC() }
         },
@@ -64,6 +65,9 @@ export class MapController {
             paint: { 'hillshade-exaggeration': 0.35 } },
           { id: 'prevcov-fill', type: 'fill', source: 'prevcov',
             paint: { 'fill-color': '#22c55e', 'fill-opacity': 0.14 } },
+          { id: 'drive-line', type: 'line', source: 'drive',
+            layout: { 'line-cap': 'round', 'line-join': 'round' },
+            paint: { 'line-color': '#ffffff', 'line-width': 1.6, 'line-opacity': 0.55 } },
           { id: 'cov-line', type: 'line', source: 'cov',
             layout: { 'line-cap': 'butt', 'line-join': 'round' },
             paint: { 'line-color': '#22c55e', 'line-opacity': 0.38,
@@ -105,8 +109,10 @@ export class MapController {
 
     this.paintColor = '#22c55e';
     this.paintOpacity = 0.38;
-    this._covFeatures = [];    // [{type:'Feature',geometry:{LineString},properties:{w0}}]
+    this._covFeatures = [];    // [{type:'Feature',geometry:{LineString},properties:{w0,i}}]
     this._runLastEnd = null;
+    this._driveFeatures = [];  // tanka črta celotne poti (tudi brez dela)
+    this._driveLastEnd = null;
 
     this.follow = true;
 
@@ -161,8 +167,19 @@ export class MapController {
   setPaintStyle(color, opacity){
     this.paintColor = color;
     this.paintOpacity = opacity;
+    const mix = (hex, target, f) => {
+      const h = hex.replace('#',''); const t = target.replace('#','');
+      const c = (i) => Math.round(parseInt(h.substr(i,2),16)*(1-f) + parseInt(t.substr(i,2),16)*f)
+        .toString(16).padStart(2,'0');
+      return '#' + c(0) + c(2) + c(4);
+    };
+    // heatmap intenzivnosti: i = dejanski odmerek / nastavljeni (1 = točno)
+    const ramp = ['interpolate', ['linear'], ['coalesce', ['get','i'], 1],
+      0.5, mix(color, '#ffffff', 0.55),
+      1.0, color,
+      1.6, mix(color, '#000000', 0.45)];
     this._run(() => {
-      this.map.setPaintProperty('cov-line', 'line-color', color);
+      this.map.setPaintProperty('cov-line', 'line-color', ramp);
       this.map.setPaintProperty('cov-line', 'line-opacity', opacity);
       this.map.setPaintProperty('prevcov-fill', 'fill-color', color);
     });
@@ -244,21 +261,27 @@ export class MapController {
     el.classList.toggle('inactive', !isActive);
   }
 
-  // Zvezno risanje pokritosti (marker poteza) — en LineString na neprekinjen niz
-  paintSegment(fromLL, toLL, widthM){
+  // Zvezno risanje pokritosti (marker poteza) — en LineString na neprekinjen niz.
+  // intensity: flow/set (1 = točen odmerek) ali null — barva heatmap lestvice.
+  paintSegment(fromLL, toLL, widthM, intensity = null){
     const last = this._runLastEnd;
     const cont = last &&
       Math.abs(last.lat - fromLL.lat) * 111320 < 0.5 &&
       Math.abs(last.lng - fromLL.lng) * 111320 < 0.5;
     const w0 = w0For(widthM, fromLL.lat);
     const active = this._covFeatures.length ? this._covFeatures[this._covFeatures.length - 1] : null;
+    const iVal = intensity == null ? null : Math.max(0.4, Math.min(1.8, intensity));
+    const sameI = active && ((active.properties.i == null && iVal == null) ||
+      (active.properties.i != null && iVal != null && Math.abs(active.properties.i - iVal) < 0.12));
 
-    if (cont && active && Math.abs(active.properties.w0 - w0) / w0 < 0.02){
+    if (cont && active && sameI && Math.abs(active.properties.w0 - w0) / w0 < 0.02){
       active.geometry.coordinates.push([toLL.lng, toLL.lat]);
     } else {
+      const props = { w0 };
+      if (iVal != null) props.i = iVal;
       this._covFeatures.push({
         type: 'Feature',
-        properties: { w0 },
+        properties: props,
         geometry: { type: 'LineString',
           coordinates: [[fromLL.lng, fromLL.lat], [toLL.lng, toLL.lat]] }
       });
@@ -273,10 +296,35 @@ export class MapController {
     return Math.sqrt(dLat*dLat + dLng*dLng);
   }
 
+  // Tanka črta poti — riše se VEDNO med sejo (tudi ko stroj ne dela)
+  paintDrive(fromLL, toLL){
+    const last = this._driveLastEnd;
+    const cont = last &&
+      Math.abs(last.lat - fromLL.lat) * 111320 < 0.5 &&
+      Math.abs(last.lng - fromLL.lng) * 111320 < 0.5;
+    const active = this._driveFeatures.length ? this._driveFeatures[this._driveFeatures.length - 1] : null;
+    if (cont && active){
+      active.geometry.coordinates.push([toLL.lng, toLL.lat]);
+    } else {
+      this._driveFeatures.push({
+        type: 'Feature', properties: {},
+        geometry: { type: 'LineString',
+          coordinates: [[fromLL.lng, fromLL.lat], [toLL.lng, toLL.lat]] }
+      });
+    }
+    this._driveLastEnd = { lat: toLL.lat, lng: toLL.lng };
+    this._run(() => this.map.getSource('drive').setData(FC(this._driveFeatures)));
+  }
+
   clearCoverage(){
     this._covFeatures = [];
     this._runLastEnd = null;
-    this._run(() => this.map.getSource('cov').setData(FC()));
+    this._driveFeatures = [];
+    this._driveLastEnd = null;
+    this._run(() => {
+      this.map.getSource('cov').setData(FC());
+      this.map.getSource('drive').setData(FC());
+    });
   }
 
   // Pokritost prejšnjih sej — zbledeli poligoni

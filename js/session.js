@@ -92,7 +92,7 @@ export class Session {
     if (prev){
       const d = haversine(prev, point);
       if (d < DEFAULTS.gpsMinDistM && (now - prev.t) < DEFAULTS.gpsMaxIntervalMs){
-        return { painted: false, segmentM: 0 };
+        return { painted: false, segmentM: 0, moved: false };
       }
       this.distanceM += d;
       if (prev.active && point.active) this.activeDistanceM += d;
@@ -142,7 +142,10 @@ export class Session {
       }
     }
     return { painted, segmentM: segM, stripCoords, paintFrom,
-             paintTo: painted ? { lat: point.lat, lng: point.lng } : null };
+             paintTo: painted ? { lat: point.lat, lng: point.lng } : null,
+             moved: true,
+             moveFrom: prev ? { lat: prev.lat, lng: prev.lng } : null,
+             moveTo: { lat: point.lat, lng: point.lng } };
   }
 
   // Auto-save varovalka (v IndexedDB vsakih N sekund, da preživi crash)
