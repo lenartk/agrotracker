@@ -6,6 +6,38 @@ Format: [verzija] - YYYY-MM-DD
 
 ---
 
+## [v3.1] - 2026-07-16
+
+### Popravljeno
+
+- **Kritično: telefonov GPS se ni nikoli zagnal.** `GPSSource` konstruktor je imel
+  `source = 'phone'`, guard v `setSource` pa je ob zagonu (in ob kliku "Telefon")
+  zaradi "ni spremembe" preskočil `watchPosition`. Delala sta samo sim in BLE.
+  Bug prisoten od v2.0. Zdaj se vir inicializira iz `null` in telefon GPS
+  ob prvem zagonu pravilno vpraša za dovoljenje za lokacijo.
+- **Ikoni preimenovani** v `icon-192-v3.png` / `icon-512-v3.png` (manifest, SW, apple-touch) —
+  cache-busting, da nameščene PWA ob ponovni namestitvi dobijo novo ikono.
+- `APP_CACHE` v5 → v6
+
+### Dodano — GPS glajenje in zvezni track
+
+- **GPS glajenje** (`geo.js: smoothPosition/smoothHeading`, žično v `gps.js`):
+  fix z natančnostjo > 30 m zavržen, pri mirovanju pozicija primrznjena (ne "tava"),
+  eksponentno glajenje pozicije prilagojeno hitrosti, krožno glajenje smeri.
+  Odpravi drift, ki ga AgriBus-NAVI nima (oni filtrirajo — zdaj tudi mi).
+  Parametri v `GPS_FILTER` (kalibracijski gumbi za teren).
+- **Zvezni track kot poteg z markerjem**: pokritost se riše kot ena neprekinjena
+  črta z zaobljenimi stiki (debelina = delovna širina v metrih, preračun ob zoomu)
+  namesto ločenih štirikotnikov — brez šivov in "črtastega" videza.
+  Podatkovni zapis (strips v seji, ha, izvozi) nespremenjen.
+- `tests/test_gpsfilter.mjs` — self-check glajenja
+- **Popravek lukenj v traku**: barvanje je prej pokrilo samo zadnji GPS segment
+  (prev→fix), ne celotne poti od zadnjega vzorčenja — pri hitrejši vožnji so
+  nastajale luknje ("črtast" trak) in ha je bil podcenjen. Zdaj strip in ha
+  od zadnje barvane pozicije.
+
+---
+
 ## [v3.0] - 2026-07-16
 
 ### Dodano — AB vodenje (jedro AgriBus-NAVI)

@@ -34,8 +34,27 @@ export class MapController {
     this.strips = [];
     this.lines = [];
 
+    // Zvezni "marker" render pokritosti: ena polyline na neprekinjen niz risanja,
+    // debelina v metrih -> pikslih, preračun ob zoomu (zaobljeni stiki = brez šivov)
+    this.runs = [];          // [{line: L.polyline, widthM}]
+    this._runLastEnd = null; // zadnja točka aktivnega run-a
+    this.map.on('zoomend', () => this._rescaleRuns());
+
     this.follow = true;
     this.rotateOnHeading = false; // v2 feature — zaenkrat off
+  }
+
+  // metri na piksel pri trenutnem zoomu (na centru karte)
+  _mpp(){
+    const c = this.map.getCenter();
+    return 40075016.686 * Math.abs(Math.cos(c.lat * Math.PI / 180)) /
+           Math.pow(2, this.map.getZoom() + 8);
+  }
+
+  _weightPx(widthM){ return Math.max(1.5, widthM / this._mpp()); }
+
+  _rescaleRuns(){
+    this.runs.forEach(r => r.line.setStyle({ weight: this._weightPx(r.widthM) }));
   }
 
   toggleSatellite(){
@@ -127,20 +146,29 @@ export class MapController {
     if (isActive) el.classList.remove('inactive'); else el.classList.add('inactive');
   }
 
+  // Zvezno risanje pokritosti — kot poteg z markerjem.
+  // Nov run začnemo, ko se from ne nadaljuje iz prejšnjega konca (pavza, preskok, ali sprememba širine).
   paintSegment(fromLL, toLL, widthM){
-    const coords = createStrip(fromLL, toLL, widthM);
-    if (!coords) return 0;
-    const strip = L.polygon(coords, {
-      color: 'transparent',
-      fillColor: this.paintColor,
-      fillOpacity: this.paintOpacity,
-      stroke: false
-    }).addTo(this.coverageLayer);
-    this.strips.push(strip);
-    const line = L.polyline([fromLL, toLL], {
-      color: this.paintColor, weight: 1.5, opacity: 0.45
-    }).addTo(this.trackLayer);
-    this.lines.push(line);
+    const last = this._runLastEnd;
+    const cont = last &&
+      Math.abs(last.lat - fromLL.lat) * 111320 < 0.5 &&
+      Math.abs(last.lng - fromLL.lng) * 111320 < 0.5;
+    const active = this.runs.length ? this.runs[this.runs.length - 1] : null;
+
+    if (cont && active && active.widthM === widthM){
+      active.line.addLatLng(toLL);
+    } else {
+      const line = L.polyline([fromLL, toLL], {
+        color: this.paintColor,
+        weight: this._weightPx(widthM),
+        opacity: this.paintOpacity,
+        lineCap: 'round', lineJoin: 'round',
+        interactive: false
+      }).addTo(this.coverageLayer);
+      this.runs.push({ line, widthM });
+    }
+    this._runLastEnd = { lat: toLL.lat, lng: toLL.lng };
+
     // Vrni dolžino segmenta v m
     const dLat = (toLL.lat - fromLL.lat) * 111320;
     const dLng = (toLL.lng - fromLL.lng) * 111320 * Math.cos(fromLL.lat * Math.PI / 180);
@@ -152,6 +180,8 @@ export class MapController {
     this.trackLayer.clearLayers();
     this.strips = [];
     this.lines = [];
+    this.runs = [];
+    this._runLastEnd = null;
   }
 
   // Naloži obstoječe trakove (npr. iz shranjene seje) kot GeoJSON

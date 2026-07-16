@@ -811,13 +811,9 @@ function onFix(fix){
     const widthM = effectiveWidthM();
     const flow = state.telemetry.flow ?? null;
     const res = state.session.addFix(fix, active, widthM, flow);
-    if (res.painted && res.stripCoords){
-      // MapController sam ne ve za nov segment — pokličimo paint
-      state.map.paintSegment(
-        { lat: state.session.track[state.session.track.length - 2].lat, lng: state.session.track[state.session.track.length - 2].lng },
-        { lat: fix.lat, lng: fix.lng },
-        widthM
-      );
+    if (res.painted && res.paintFrom && res.paintTo){
+      // Riši od zadnje barvane pozicije — zvezen trak brez lukenj
+      state.map.paintSegment(res.paintFrom, res.paintTo, widthM);
     }
     updateMapStats();
   } else if (state.session && state.session.state === 'paused'){

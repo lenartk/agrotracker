@@ -108,17 +108,21 @@ export class Session {
     let segM = 0;
     let stripCoords = null;
 
+    // Barvamo od ZADNJE barvane pozicije (ne od prejšnjega fixa) — sicer
+    // segmenti med vzorci ostanejo nepokriti: luknje v traku in podcenjen ha.
+    let paintFrom = null;
     if (doPaint){
       const sinceLast = now - this._lastPaintAt;
       const movedFromPaint = this._lastPaintPos
         ? haversine(this._lastPaintPos, point)
         : Infinity;
       if (sinceLast >= DEFAULTS.paintSampleMinMs || movedFromPaint >= 1.0){
-        stripCoords = createStrip(prev, point, widthM);
+        paintFrom = this._lastPaintPos || { lat: prev.lat, lng: prev.lng };
+        stripCoords = createStrip(paintFrom, point, widthM);
         if (stripCoords){
           this.strips.push(stripCoords);
-          const segDx = (point.lng - prev.lng) * 111320 * Math.cos(prev.lat * Math.PI/180);
-          const segDy = (point.lat - prev.lat) * 111320;
+          const segDx = (point.lng - paintFrom.lng) * 111320 * Math.cos(paintFrom.lat * Math.PI/180);
+          const segDy = (point.lat - paintFrom.lat) * 111320;
           segM = Math.sqrt(segDx*segDx + segDy*segDy);
           this.coveredHa += (segM * widthM) / 10000;
           this.passes += 1;
@@ -132,10 +136,13 @@ export class Session {
           this._lastPaintAt = now;
           this._lastPaintPos = { lat: point.lat, lng: point.lng };
           painted = true;
+        } else {
+          paintFrom = null;
         }
       }
     }
-    return { painted, segmentM: segM, stripCoords };
+    return { painted, segmentM: segM, stripCoords, paintFrom,
+             paintTo: painted ? { lat: point.lat, lng: point.lng } : null };
   }
 
   // Auto-save varovalka (v IndexedDB vsakih N sekund, da preživi crash)

@@ -7,12 +7,14 @@
 
 import { ble } from './ble.js';
 import { DEFAULTS } from './constants.js';
-import { haversine, bearing } from './geo.js';
+import { haversine, bearing, smoothPosition, smoothHeading } from './geo.js';
 
 class GPSSource extends EventTarget {
   constructor(){
     super();
-    this.source = 'phone';     // 'phone' | 'ble' | 'sim'
+    // null do prvega setSource — sicer guard "src === this.source" prepreči
+    // zagon watchPosition za privzeti 'phone' vir (telefon GPS ne bi nikoli delal)
+    this.source = null;        // 'phone' | 'ble' | 'sim'
     this.lastFix = null;
     this._watchId = null;
     this._simTarget = null;    // {lat,lng}
@@ -51,6 +53,8 @@ class GPSSource extends EventTarget {
     if (src === this.source) return;
     this._stopPhone();
     this._stopSim();
+    this._filtPos = null;   // reset glajenja ob menjavi vira
+    this._hState = null;
     this.source = src;
     this.dispatchEvent(new CustomEvent('source-changed', { detail: { source: src } }));
     if (src === 'phone') this._startPhone();
@@ -165,6 +169,20 @@ class GPSSource extends EventTarget {
   }
 
   _emitFix(fix){
+    // Glajenje pravih virov (sim je že idealen) — proti driftu in tavanju pri mirovanju
+    if (fix.source !== 'sim'){
+      const sp = smoothPosition(this._filtPos, fix);
+      if (!sp) return; // prenizka natančnost — fix zavržemo
+      fix.lat = sp.lat;
+      fix.lng = sp.lng;
+      if (sp.frozen) fix.spdKmh = 0;
+      this._filtPos = { lat: fix.lat, lng: fix.lng };
+      if (fix.headingDeg != null){
+        const sh = smoothHeading(this._hState, fix.headingDeg);
+        fix.headingDeg = sh.headingDeg;
+        this._hState = sh.state;
+      }
+    }
     // Heading fallback iz dveh fixov
     if (fix.headingDeg == null && this.lastFix){
       const d = haversine(this.lastFix, fix);

@@ -2,10 +2,10 @@
 
 Sledenje obdelanim površinam na kmetiji. PWA (telefon + PC), ESP32 modul na stroju, GPS + BLE + RS485.
 
-**Verzija:** v3.0 (julij 2026)
+**Verzija:** v3.1 (julij 2026)
 **Repo:** `github.com/lenartk/agrotracker`
 **Live:** `https://lenartk.github.io/agrotracker/`
-**Status:** v3.0 deployed na GitHub Pages — terenski test še čaka
+**Status:** v3.1 deployed na GitHub Pages — terenski test v teku (GPS potrjen, drift odpravljen z glajenjem)
 
 ---
 
@@ -72,18 +72,18 @@ izvoz/uvoz
 
 ---
 
-## Trenutni status (julij 2026, v3.0)
+## Trenutni status (julij 2026, v3.1)
 
-**PWA**: v3.0 lokalno — AB vodenje z lightbarom (jedro AgriBus-NAVI), prejšnja pokritost,
+**PWA**: v3.1 — AB vodenje z lightbarom (jedro AgriBus-NAVI), prejšnja pokritost,
 sezona statistika, CSV evidenca, preostalo+ETA, nov industrijski UI, nove ikone.
-**Upload**: v3.0 deployed na GitHub Pages (2026-07-16, git push prek SSH; klon v `~/workspace/agrotracker`)
+**Upload**: v3.0 + v3.1 deployed na GitHub Pages (2026-07-16, git push prek SSH; klon v `~/workspace/agrotracker`)
 **Test na terenu**: še NI — naslednji veliki korak (zdaj z vodenjem še bolj smiseln)
 **ESP32 modul**: koda gotova, **strojna oprema še ni naročena/sestavljena**
 **Cloud sync**: NI implementiran
 **Desktop pregled**: NI specifičen layout (zaenkrat enak kot mobile)
 **Popravljanje sej po fact**: NI
 
-### v3.0 na kratko (kaj je novega za uporabo)
+### v3.x na kratko (kaj je novega za uporabo)
 
 1. Na karti pritisni `A·B` na začetku prve vožnje, pelji do konca, pritisni `→B`.
 2. Lightbar pokaže odklon v cm in kam zaviti; linije so narisane na karti.

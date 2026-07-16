@@ -158,3 +158,52 @@ export function formatDuration(ms){
   if (m > 0) return `${m}m ${ss}s`;
   return `${ss}s`;
 }
+
+// ============ GPS glajenje (proti driftu surovih fixov) ============
+// AgriBus-stil enakomernost: telefonski GPS jitter-a ±1-3 m; brez filtra
+// vozilo "tava" in lightbar skače. Trije prijemi:
+//   1. fix s slabo natančnostjo zavržemo,
+//   2. pri mirovanju pozicijo primrznemo (šum ne premika vozila),
+//   3. eksponentno glajenje — pri počasni vožnji močnejše, pri hitri šibkejše.
+// ponytail: eksp. glajenje namesto Kalmana; parametri v GPS_FILTER so kalibracijski gumbi
+
+export const GPS_FILTER = {
+  maxAccM: 30,       // fix z natančnostjo slabšo od te zavržemo
+  stillKmh: 0.8,     // pod to hitrostjo štejemo, da stojimo
+  alphaSlow: 0.25,   // delež novega fixa pri ~0 km/h (nižje = bolj gladko)
+  alphaFast: 0.75,   // delež novega fixa pri >= fastKmh
+  fastKmh: 12,
+  headingBeta: 0.35  // glajenje smeri (krožno)
+};
+
+// Zgladi pozicijo fixa glede na prejšnjo zglajeno pozicijo.
+// prev: {lat,lng} ali null. Vrne null, če fix zavržemo, sicer {lat,lng,frozen}.
+export function smoothPosition(prev, fix, F = GPS_FILTER){
+  if (fix.accuracyM != null && fix.accuracyM > F.maxAccM) return null;
+  if (!prev) return { lat: fix.lat, lng: fix.lng, frozen: false };
+  const spd = fix.spdKmh || 0;
+  const d = haversine(prev, fix);
+  // mirovanje: dokler smo znotraj šuma, pozicije ne premikamo
+  if (spd < F.stillKmh && d < Math.max(1.5, (fix.accuracyM || 3) * 0.6)){
+    return { lat: prev.lat, lng: prev.lng, frozen: true };
+  }
+  const t = Math.min(1, spd / F.fastKmh);
+  const a = F.alphaSlow + (F.alphaFast - F.alphaSlow) * t;
+  return {
+    lat: prev.lat + a * (fix.lat - prev.lat),
+    lng: prev.lng + a * (fix.lng - prev.lng),
+    frozen: false
+  };
+}
+
+// Krožno glajenje smeri (stopinje). state: {s,c} ali null. Vrne {headingDeg, state}.
+export function smoothHeading(state, headingDeg, beta = GPS_FILTER.headingBeta){
+  const r = headingDeg * Math.PI / 180;
+  if (!state) return { headingDeg, state: { s: Math.sin(r), c: Math.cos(r) } };
+  const s = (1 - beta) * state.s + beta * Math.sin(r);
+  const c = (1 - beta) * state.c + beta * Math.cos(r);
+  return {
+    headingDeg: (Math.atan2(s, c) * 180 / Math.PI + 360) % 360,
+    state: { s, c }
+  };
+}
