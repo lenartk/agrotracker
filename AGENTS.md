@@ -137,9 +137,9 @@ Preden potrdiš spremembo, **vsaj `node --check` na vsako spremenjeno JS datotek
 
 - v3.0 lokalno pripravljena: AB vodenje + lightbar (`js/guidance.js`), prejšnja pokritost,
   sezona statistika, CSV evidenca, nov industrijski UI, nove ikone
-- Na GitHub Pages je še v2.x — uporabnik mora uploadati prek GitHub web vmesnika
+- v3.0 deployed na GitHub Pages (2026-07-16); git klon v ~/workspace/agrotracker, SSH push dela
 - Prvi terenski test še ni izveden
-- Naslednji koraki: upload → terenski test (z vodenjem) → popravljanje sej → cloud sync
+- Naslednji koraki: terenski test (z vodenjem) → popravljanje sej → cloud sync
 - ESP32 strojna oprema še ni naročena/sestavljena
 - Geometrijski test: `node tests/test_guidance.mjs`
 

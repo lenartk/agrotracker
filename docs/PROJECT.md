@@ -5,7 +5,7 @@ Sledenje obdelanim površinam na kmetiji. PWA (telefon + PC), ESP32 modul na str
 **Verzija:** v3.0 (julij 2026)
 **Repo:** `github.com/lenartk/agrotracker`
 **Live:** `https://lenartk.github.io/agrotracker/`
-**Status:** v3.0 lokalno pripravljena (AB vodenje + lightbar + evidenca + nov UI) — za upload na GitHub; terenski test še čaka
+**Status:** v3.0 deployed na GitHub Pages — terenski test še čaka
 
 ---
 
@@ -76,7 +76,7 @@ izvoz/uvoz
 
 **PWA**: v3.0 lokalno — AB vodenje z lightbarom (jedro AgriBus-NAVI), prejšnja pokritost,
 sezona statistika, CSV evidenca, preostalo+ETA, nov industrijski UI, nove ikone.
-**Upload**: v3.0 še NI na GitHub Pages — uploadaj mapo prek GitHub web vmesnika
+**Upload**: v3.0 deployed na GitHub Pages (2026-07-16, git push prek SSH; klon v `~/workspace/agrotracker`)
 **Test na terenu**: še NI — naslednji veliki korak (zdaj z vodenjem še bolj smiseln)
 **ESP32 modul**: koda gotova, **strojna oprema še ni naročena/sestavljena**
 **Cloud sync**: NI implementiran
