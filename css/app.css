@@ -258,6 +258,7 @@ input:focus,select:focus{border-color:var(--accent)}
 .maplibregl-ctrl-bottom-left,.maplibregl-ctrl-bottom-right{display:none}
 .maplibregl-canvas{outline:none}
 .sidecontrols .iconbtn.on3d{background:#14532d;border-color:var(--accent)}
+.sidecontrols .iconbtn.on{background:#14532d;border-color:var(--accent);color:#86efac}
 
 /* Desktop wrapper */
 @media (min-width:900px){

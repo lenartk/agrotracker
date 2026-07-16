@@ -6,6 +6,18 @@ Format: [verzija] - YYYY-MM-DD
 
 ---
 
+## [v4.3] - 2026-07-16
+
+### Spremenjeno — Google Maps vedenje karte
+
+- **Ročni premik karte izklopi sledenje vozilu** — karta ostane, kjer si jo
+  pustil (pregledovanje parcel med sejo brez "vračanja" na lokacijo).
+- **Križec** (en sam gumb) ponovno centrira na vozilo in vklopi sledenje;
+  stanje sledenja je vidno (zelen gumb). Ločen ON/OFF gumb odstranjen.
+- `APP_CACHE` v12
+
+---
+
 ## [v4.2.1] - 2026-07-16
 
 ### Popravljeno — posodobitve na telefonu

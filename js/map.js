@@ -114,9 +114,21 @@ export class MapController {
       const f = e.features && e.features[0];
       if (f && this.onParcelClick) this.onParcelClick(f.properties.id);
     });
+
+    // Google Maps vedenje: ročni premik karte izklopi sledenje vozilu.
+    // Nazaj ga vklopi tipka (križec) — glej app.js onFollowChange.
+    this.onFollowChange = null;
+    this.map.on('dragstart', () => this.setFollow(false));
+    this.map.on('rotatestart', () => this.setFollow(false));
   }
 
   _run(fn){ if (this._ready) fn(); else this._q.push(fn); }
+
+  setFollow(on){
+    if (this.follow === on) return;
+    this.follow = on;
+    if (this.onFollowChange) this.onFollowChange(on);
+  }
 
   resize(){ this.map.resize(); }
 

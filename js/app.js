@@ -456,6 +456,11 @@ function ensureMap(){
   }
   state.map = new MapController($('#map'), { center: DEFAULTS.center, zoom: DEFAULTS.zoom });
 
+  state.map.onFollowChange = (on) => {
+    $('#mapCenterBtn').classList.toggle('on', on);
+  };
+  $('#mapCenterBtn').classList.toggle('on', state.map.follow);
+
   state.map.onParcelClick = (id) => {
     state.selectedParcelId = id;
     state.map.highlightParcel(id);
@@ -502,7 +507,10 @@ function wireMap(){
   $('#mapMenuBtn').onclick = () => openDrawer();
   $('#mapCenterBtn').onclick = () => {
     const f = gps.lastFix;
-    if (f) state.map.centerOn([f.lat, f.lng]);
+    if (f){
+      state.map.setFollow(true);
+      state.map.centerOn([f.lat, f.lng]);
+    }
     else if (state.selectedParcelId) state.map.fitToParcel(state.selectedParcelId);
     else state.map.fitToAllParcels();
   };
@@ -515,10 +523,7 @@ function wireMap(){
     $('#map3dBtn').classList.toggle('on3d', on);
     toast(on ? '3D pogled (teren)' : '2D pogled');
   };
-  $('#mapLayersBtn').onclick = () => {
-    state.map.follow = !state.map.follow;
-    toast('Sredina: ' + (state.map.follow ? 'ON' : 'OFF'));
-  };
+
 
   $('#startBtn').onclick = () => {
     if (!state.session) { startSession(); return; }
