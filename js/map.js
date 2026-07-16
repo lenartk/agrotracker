@@ -34,6 +34,7 @@ export class MapController {
       pitchWithRotate: true,
       maxPitch: 70,
       preserveDrawingBuffer: true, // omogoči screenshote karte (tudi testne)
+      fadeDuration: 0,             // brez bledenja tile-ov — hitrejši vtis
       style: {
         version: 8,
         sources: {

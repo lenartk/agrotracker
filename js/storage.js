@@ -6,7 +6,7 @@
 // Vse async, vrne Promise-e. Ni dependency-ja na Dexie ipd.
 
 const DB_NAME = 'agrotracker';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 let _dbPromise = null;
 
 function openDB(){
@@ -26,6 +26,9 @@ function openDB(){
       }
       if (!db.objectStoreNames.contains('kv')){
         db.createObjectStore('kv', { keyPath: 'k' });
+      }
+      if (!db.objectStoreNames.contains('gerklib')){
+        db.createObjectStore('gerklib', { keyPath: 'k' });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -99,6 +102,24 @@ export async function getKV(key, fallback = null){
 export async function setKV(key, value){
   const store = await tx('kv', 'readwrite');
   return promisify(store.put({ k: key, v: value }));
+}
+
+// ============ GERK KNJIŽNICA (vsi GERK-i območja, za point-lookup) ============
+
+export async function saveGerkLib(featureCollection){
+  const store = await tx('gerklib', 'readwrite');
+  return promisify(store.put({ k: 'lib', fc: featureCollection, savedAt: Date.now() }));
+}
+
+export async function getGerkLib(){
+  const store = await tx('gerklib');
+  const r = await promisify(store.get('lib'));
+  return r ? r.fc : null;
+}
+
+export async function clearGerkLib(){
+  const store = await tx('gerklib', 'readwrite');
+  return promisify(store.clear());
 }
 
 // ============ UTIL ============

@@ -13,6 +13,7 @@ import { Session } from './session.js';
 import {
   savedParcels, saveParcel, deleteParcel, clearParcels,
   savedSessions, saveSession, deleteSession, getSession,
+  saveGerkLib, getGerkLib, clearGerkLib,
   getKV, setKV, newId, storageEstimate
 } from './storage.js';
 import {
@@ -30,6 +31,7 @@ const state = {
   session: null,
   map: null,
   guidance: new Guidance(),
+  gerkLib: null,          // FeatureCollection vseh GERK-ov območja (lazy iz IndexedDB)
   telemetry: { active: null, width: null, flow: null, rs485ok: false, machine: null, lifted: null, alarm: 0 },
   online: navigator.onLine,
   tileDownload: null,  // {abort, done, total} ko teče predprenos
@@ -43,6 +45,7 @@ const state = {
     useBleWidth: true,
     guidanceBeep: false,
     dayTheme: false,
+    kmgMid: '',
   },
   // Home
   selectedOpId: 'seed',
@@ -188,6 +191,15 @@ async function init(){
     navigator.serviceWorker.register('./sw.js').catch(console.error);
   }
 
+  // Prewarm karte: ustvari jo v ozadju in nalozi tile-e za parcele,
+  // da je ob zacetku seje na voljo takoj (prej se je gradila sele takrat)
+  setTimeout(() => {
+    try {
+      ensureMap();
+      if (state.parcels.length) state.map.fitToAllParcels();
+    } catch (e){ console.warn('map prewarm', e); }
+  }, 700);
+
   // Ask for persistence (proti izpraznjenju storage-a)
   if (navigator.storage && navigator.storage.persist){
     navigator.storage.persisted().then(p => { if (!p) navigator.storage.persist(); });
@@ -211,6 +223,99 @@ async function loadDemoParcels(){
       state.parcels.push(p);
     }
   } catch (e){ console.warn('Demo parcele niso bile naložene', e); }
+}
+
+// ============ GERK KNJIŽNICA ============
+// "Kontra smer": stojiš na parceli -> app v lokalni knjižnici območja najde GERK
+// pod tabo in ga doda med parcele. Brez strežnika, deluje offline.
+
+async function ensureGerkLib(){
+  if (state.gerkLib === null){
+    state.gerkLib = await getGerkLib() || { type: 'FeatureCollection', features: [] };
+  }
+  return state.gerkLib;
+}
+
+function findGerkAt(ll, lib){
+  if (!lib || !lib.features) return null;
+  return lib.features.find(f => pointInFeature(ll, f)) || null;
+}
+
+function parcelFromGerkFeature(f){
+  return {
+    id: 'gerk_' + (f.properties?.GERK_PID ?? newId('par')),
+    name: f.properties?.name || f.properties?.DOMACE_IME ||
+          (f.properties?.GERK_PID ? 'GERK ' + f.properties.GERK_PID : 'Parcela'),
+    ha: f.properties?.ha ?? featureHa(f),
+    feature: f,
+    gerkPid: f.properties?.GERK_PID ?? null,
+    raba: f.properties?.RABA_ID ?? null,
+    source: 'gerklib',
+    createdAt: Date.now()
+  };
+}
+
+// Doda GERK na trenutni GPS poziciji (če ga knjižnica pozna in ga še nimamo)
+async function addGerkAtCurrentPosition({ silent = false } = {}){
+  const f = gps.lastFix;
+  if (!f){ if (!silent) toast('Ni GPS pozicije.'); return null; }
+  const lib = await ensureGerkLib();
+  if (!lib.features.length){
+    if (!silent) await appInfo('GERK knjižnica je prazna. V Nastavitvah uvozi datoteko območja (tools/gerk_extract.py --obmocje-km).', 'GERK knjižnica');
+    return null;
+  }
+  const hit = findGerkAt({ lat: f.lat, lng: f.lng }, lib);
+  if (!hit){ if (!silent) toast('Na tej poziciji ni GERK-a v knjižnici.'); return null; }
+  const pid = hit.properties?.GERK_PID;
+  const existing = state.parcels.find(p => p.gerkPid && pid && p.gerkPid === pid);
+  if (existing){
+    state.selectedParcelId = existing.id;
+    if (state.map){ state.map.highlightParcel(existing.id); }
+    if (!silent) toast('GERK ' + pid + ' je že med parcelami — izbran.');
+    return existing;
+  }
+  const ime = hit.properties?.name || hit.properties?.DOMACE_IME || ('GERK ' + (pid ?? '?'));
+  const ha = hit.properties?.ha ?? featureHa(hit);
+  const ok = await appConfirm(
+    `Stojiš na: ${ime}` + (pid ? ` (GERK ${pid})` : '') + `, ${fmtNum(ha, 2)} ha. Dodam med parcele?`,
+    { title: 'GERK najden', okLabel: 'Dodaj' });
+  if (!ok) return null;
+  const p = parcelFromGerkFeature(hit);
+  await saveParcel(p);
+  state.parcels.push(p);
+  state.selectedParcelId = p.id;
+  refreshParcelsOnMap();
+  if (state.map) state.map.highlightParcel(p.id);
+  if (state.session && !state.session.parcel) state.session.parcel = p;
+  toast('Dodano: ' + p.name);
+  return p;
+}
+
+// Uvoz GERK datoteke območja: vse v knjižnico; tvoje (po KMG-MID) takoj med parcele
+async function importGerkArea(file){
+  const text = await file.text();
+  const gj = JSON.parse(text);
+  const feats = (gj.type === 'FeatureCollection' ? gj.features : [gj])
+    .filter(f => f?.geometry && (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon'));
+  if (!feats.length) throw new Error('Ni veljavnih poligonov.');
+  await saveGerkLib({ type: 'FeatureCollection', features: feats });
+  state.gerkLib = { type: 'FeatureCollection', features: feats };
+
+  let added = 0;
+  const mid = (state.settings.kmgMid || '').trim();
+  if (mid){
+    for (const f of feats){
+      if (String(f.properties?.KMG_MID ?? '').trim() !== mid) continue;
+      const pid = f.properties?.GERK_PID;
+      if (state.parcels.find(p => p.gerkPid && pid && p.gerkPid === pid)) continue;
+      const p = parcelFromGerkFeature(f);
+      await saveParcel(p);
+      state.parcels.push(p);
+      added++;
+    }
+  }
+  refreshParcelsOnMap?.();
+  return { lib: feats.length, added, mid };
 }
 
 // ============ HOME VIEW ============
@@ -642,6 +747,10 @@ function renderDrawer(){
   $$('#drawerGpsRadios input[type=radio]').forEach(r => {
     r.onchange = () => { if (r.checked) setGpsSource(r.value); };
   });
+  $('#drawerAddGerkBtn').onclick = async () => {
+    closeDrawer();
+    await addGerkAtCurrentPosition();
+  };
   $('#drawerClearBtn').onclick = async () => {
     if (!state.session) { toast('Ni aktivne seje.'); return; }
     if (!await appConfirm('Počistim trenutno barvanje?', { okLabel: 'Počisti', danger: true })) return;
@@ -681,14 +790,23 @@ function effectiveMachineActive(){
 }
 
 // ============ SESSION LIFECYCLE ============
-function startSession(){
+async function startSession(){
   if (state.session && state.session.state !== 'stopped'){
     toast('Seja že teče');
     return;
   }
   const op = OPERATIONS[state.selectedOpId];
   const machine = MACHINES.find(m => m.id === state.selectedMachineId);
-  const parcel = state.parcels.find(p => p.id === state.selectedParcelId) || null;
+  let parcel = state.parcels.find(p => p.id === state.selectedParcelId) || null;
+
+  // Ni izbrane parcele, GPS pa je — poglej v GERK knjižnico, kje stojiš
+  if (!parcel && gps.lastFix){
+    const onKnown = state.parcels.find(p => pointInFeature(gps.lastFix, p.feature));
+    if (!onKnown){
+      const added = await addGerkAtCurrentPosition({ silent: true });
+      if (added) parcel = added;
+    }
+  }
 
   state.session = new Session({ operation: op, machine, parcel, note: state.note });
   state.session.start();
@@ -1227,6 +1345,43 @@ function downloadBlob(blob, name){
 function wireSettingsView(){
   $('#settingsBackBtn').onclick = () => showView('home');
   $('#settingsImportBtn').onclick = () => $('#fileImport').click();
+
+  // KMG-MID (shrani se ob vnosu)
+  $('#settingsKmgMid').value = state.settings.kmgMid || '';
+  $('#settingsKmgMid').addEventListener('change', (e) => {
+    state.settings.kmgMid = e.target.value.trim();
+    persistSettings();
+  });
+
+  // Uvoz GERK območja: knjižnica + samodejni vnos mojih parcel po KMG-MID
+  $('#settingsImportGerkBtn').onclick = () => {
+    if (!(state.settings.kmgMid || '').trim()){
+      appInfo('Najprej vpiši svoj KMG-MID — po njem app iz datoteke prepozna tvoje parcele.', 'KMG-MID manjka');
+      return;
+    }
+    $('#fileImportGerk').click();
+  };
+  $('#fileImportGerk').addEventListener('change', async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    try {
+      const r = await importGerkArea(f);
+      state.parcels = await savedParcels();
+      renderSettings();
+      await appInfo(`Knjižnica: ${r.lib} GERK-ov. Samodejno dodanih tvojih parcel (KMG-MID ${r.mid}): ${r.added}.`, 'GERK uvoz uspel');
+    } catch (err){
+      console.warn(err);
+      appInfo('Uvoz ni uspel: ' + (err.message || err), 'Napaka');
+    }
+    e.target.value = '';
+  });
+  $('#settingsClearGerkLibBtn').onclick = async () => {
+    if (!await appConfirm('Izbrišem GERK knjižnico območja? (Parcele ostanejo.)', { okLabel: 'Izbriši', danger: true })) return;
+    await clearGerkLib();
+    state.gerkLib = { type: 'FeatureCollection', features: [] };
+    renderSettings();
+    toast('Knjižnica izbrisana');
+  };
   $('#fileImport').addEventListener('change', async (e) => {
     const f = e.target.files?.[0];
     if (!f) return;

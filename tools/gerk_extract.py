@@ -43,6 +43,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("kmg_mid", help="KMG-MID številka kmetije (9 mest)")
     ap.add_argument("-o", "--out", default=None, help="izhodna GeoJSON datoteka")
+    ap.add_argument("--obmocje-km", type=float, default=0, metavar="KM",
+                    help="poleg tvojih izvozi VSE GERK-e v radiju KM okoli kmetije "
+                         "(GERK knjižnica za 'dodaj GERK tukaj' v aplikaciji)")
     args = ap.parse_args()
 
     try:
@@ -83,11 +86,30 @@ def main():
     want = str(args.kmg_mid).strip()
     tr = Transformer.from_crs("EPSG:3794", "EPSG:4326", always_xy=True)
 
+    # 1. prehod: bbox-i tvojih GERK-ov (za center območja pri --obmocje-km)
+    center = None
+    if args.obmocje_km > 0:
+        boxes = [sr.shape.bbox for sr in r.iterShapeRecords()
+                 if str(sr.record[i_mid]).strip() == want]
+        if not boxes:
+            sys.exit(f"Ni GERK-ov za KMG-MID {want} — preveri številko.")
+        cx = sum((b[0] + b[2]) / 2 for b in boxes) / len(boxes)
+        cy = sum((b[1] + b[3]) / 2 for b in boxes) / len(boxes)
+        center = (cx, cy)
+        rm = args.obmocje_km * 1000
+        print(f"Območje: {args.obmocje_km} km okoli kmetije (D96 center {cx:.0f},{cy:.0f})")
+
     feats = []
     for sr in r.iterShapeRecords():
         rec = sr.record
-        if str(rec[i_mid]).strip() != want:
-            continue
+        mine = str(rec[i_mid]).strip() == want
+        if not mine:
+            if center is None:
+                continue
+            b = sr.shape.bbox
+            bx, by = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
+            if (bx - center[0]) ** 2 + (by - center[1]) ** 2 > rm * rm:
+                continue
         shp = sr.shape.__geo_interface__
         # reprojekcija vseh koordinat
         def rp(coords):
@@ -103,7 +125,7 @@ def main():
         props = {
             "name": ime or (f"GERK {pid}" if pid else "GERK"),
             "GERK_PID": pid,
-            "KMG_MID": want,
+            "KMG_MID": str(rec[i_mid]).strip(),
         }
         if i_raba is not None:
             props["RABA_ID"] = rec[i_raba]
@@ -117,12 +139,16 @@ def main():
     if not feats:
         sys.exit(f"Ni GERK-ov za KMG-MID {want} — preveri številko.")
 
-    out = args.out or f"gerki-{want}.geojson"
+    mine_n = sum(1 for f in feats if f["properties"]["KMG_MID"] == want)
+    out = args.out or (f"gerk-obmocje-{want}.geojson" if center else f"gerki-{want}.geojson")
     with open(out, "w", encoding="utf-8") as f:
         json.dump({"type": "FeatureCollection", "features": feats}, f, ensure_ascii=False)
-    tot = sum(f["properties"].get("ha", 0) for f in feats)
-    print(f"OK: {len(feats)} GERK-ov, {tot:.2f} ha -> {out}")
-    print("Uvozi v AgroTracker: Nastavitve -> Uvozi GeoJSON")
+    tot = sum(f["properties"].get("ha", 0) for f in feats if f["properties"]["KMG_MID"] == want)
+    print(f"OK: {len(feats)} GERK-ov (tvojih {mine_n}, {tot:.2f} ha) -> {out}")
+    if center:
+        print("Uvozi v AgroTracker: Nastavitve -> Uvozi GERK območje (vpiši KMG-MID prej)")
+    else:
+        print("Uvozi v AgroTracker: Nastavitve -> Uvozi navaden GeoJSON")
 
 
 if __name__ == "__main__":

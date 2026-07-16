@@ -6,6 +6,32 @@ Format: [verzija] - YYYY-MM-DD
 
 ---
 
+## [v4.1] - 2026-07-16
+
+### Dodano — GERK knjižnica (MID → parcele, in obratno)
+
+- **Nastavitve → KMG-MID + "Uvozi GERK območje"**: iz ene datoteke
+  (`tools/gerk_extract.py <MID> --obmocje-km 5`) se tvoje parcele po KMG-MID
+  vnesejo same, VSI GERK-i območja pa ostanejo v lokalni knjižnici (IndexedDB).
+- **"Kontra smer": stojiš na parceli → app jo doda.** Ob začetku dela brez
+  izbrane parcele app v knjižnici poišče GERK pod GPS pozicijo in ga ponudi
+  ("Stojiš na: … Dodam med parcele?"). Ročno tudi prek menija
+  ("Dodaj GERK tukaj"). Deluje offline, pokrije tudi najete parcele
+  (drug KMG-MID). Brez strežnika — CORS na rkg.gov.si je zaprt (preverjeno
+  vklj. preflight), zato podatki pridejo iz datoteke, logika pa je lokalna.
+
+### Popravljeno
+
+- **Počasno nalaganje karte ob začetku dela**: karta se zdaj ustvari in
+  ogreje ob zagonu aplikacije (tile-i za parcele se predpomnijo takoj),
+  raster prehodi brez bledenja (`fadeDuration: 0`).
+
+### Tehnično
+
+- IndexedDB shema v2 (nov store `gerklib`), `APP_CACHE` v9
+
+---
+
 ## [v4.0] - 2026-07-16
 
 ### Dodano — 2D/3D karta (MapLibre GL)

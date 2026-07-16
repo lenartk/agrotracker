@@ -54,7 +54,7 @@
       </div>
       <div style="flex:1">
         <div class="home-title">AGRO<em>TRACKER</em></div>
-        <div class="home-sub">GPS vodenje · sledenje · evidenca — v4.0</div>
+        <div class="home-sub">GPS vodenje · sledenje · evidenca — v4.1</div>
       </div>
       <button class="iconbtn circle" id="homeHistoryBtn" title="Zgodovina"><svg class="icon"><use href="#i-folder"/></svg></button>
       <button class="iconbtn circle" id="homeSettingsBtn" title="Nastavitve"><svg class="icon"><use href="#i-sliders"/></svg></button>
@@ -222,6 +222,7 @@
         <div class="card">
           <h3>Akcije</h3>
           <div class="btn-row">
+            <button class="minibtn" id="drawerAddGerkBtn">Dodaj GERK tukaj</button>
             <button class="minibtn" id="drawerClearBtn">Počisti barvanje</button>
             <button class="minibtn" id="drawerGoHome">Domov</button>
             <button class="minibtn" id="drawerToHistory">Zgodovina</button>
@@ -256,12 +257,18 @@
 
     <div class="card">
       <h3>Parcele (GERK)</h3>
-      <div class="hint">Uvozi GeoJSON s svojimi GERK-i. Izdelaš ga s skripto <code>tools/gerk_extract.py &lt;KMG-MID&gt;</code> (uradni javni podatki MKGP) ali iz QGIS-a. Aplikacija med delom samodejno zazna GERK in ga zabeleži v evidenco.</div>
-      <div class="rowline"><span class="small muted">Število</span><strong id="settingsParcelsCount">—</strong></div>
+      <div class="hint">Vpiši svoj KMG-MID in uvozi GERK datoteko območja (izdela jo <code>tools/gerk_extract.py &lt;KMG-MID&gt; --obmocje-km 5</code> iz uradnih javnih podatkov MKGP). Tvoje parcele se vnesejo same, ostale čakajo v knjižnici — ko stojiš na njivi, jih app ponudi po GPS.</div>
+      <div class="rowline tall"><span>KMG-MID</span></div>
+      <input type="text" id="settingsKmgMid" inputmode="numeric" placeholder="npr. 100123456" />
+      <div class="rowline"><span class="small muted">Moje parcele</span><strong id="settingsParcelsCount">—</strong></div>
+      <div class="rowline"><span class="small muted">GERK knjižnica območja</span><strong id="settingsGerkLibCount">—</strong></div>
       <input type="file" id="fileImport" accept=".geojson,.json,application/geo+json,application/json" style="display:none">
+      <input type="file" id="fileImportGerk" accept=".geojson,.json,application/geo+json,application/json" style="display:none">
       <div class="btn-row">
-        <button class="minibtn" id="settingsImportBtn">Uvozi GeoJSON</button>
-        <button class="minibtn danger" id="settingsClearParcelsBtn">Izbriši vse</button>
+        <button class="minibtn" id="settingsImportGerkBtn">Uvozi GERK območje</button>
+        <button class="minibtn" id="settingsImportBtn">Uvozi navaden GeoJSON</button>
+        <button class="minibtn danger" id="settingsClearGerkLibBtn">Izbriši knjižnico</button>
+        <button class="minibtn danger" id="settingsClearParcelsBtn">Izbriši vse parcele</button>
       </div>
     </div>
 
@@ -315,7 +322,7 @@
     <div class="card">
       <h3>O aplikaciji</h3>
       <div class="note">
-        AgroTracker v4.0 — GPS vodenje (AB linije + lightbar), 2D/3D karta s terenom, sledenje obdelanim površinam in GERK evidenca opravil.<br>
+        AgroTracker v4.1 — GPS vodenje (AB linije + lightbar), 2D/3D karta s terenom, sledenje obdelanim površinam in GERK evidenca opravil.<br>
         Povezava z ESP32 modulom preko Web Bluetooth.<br><br>
         <strong>Brskalnik:</strong> <span id="settingsBrowser" class="small muted"></span>
       </div>
