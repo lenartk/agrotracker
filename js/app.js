@@ -17,7 +17,7 @@ import {
 } from './storage.js';
 import {
   featureHa, bboxOfFeature, centroidOfFeature, pointInFeature,
-  formatDistance, formatDuration
+  formatDistance, formatDuration, fmtNum
 } from './geo.js';
 import {
   tilesForParcels, downloadTiles, tileCacheStats, clearTileCache, estimateTileCount
@@ -42,6 +42,7 @@ const state = {
     useBleMachineActive: true,
     useBleWidth: true,
     guidanceBeep: false,
+    dayTheme: false,
   },
   // Home
   selectedOpId: 'seed',
@@ -64,6 +65,27 @@ export function toast(msg, ms = 2300){
   _toastTimer = setTimeout(() => t.classList.remove('show'), ms);
 }
 
+// Potrditveni dialog — nadomešča native confirm() (enoten videz)
+function appConfirm(msg, { title = 'Potrditev', okLabel = 'V redu', danger = false, cancel = true } = {}){
+  return new Promise(resolve => {
+    $('#dlgTitle').textContent = title;
+    $('#dlgMsg').textContent = msg;
+    const ok = $('#dlgOk'), cancelBtn = $('#dlgCancel'), scrim = $('#dlgScrim');
+    ok.textContent = okLabel;
+    ok.className = 'minibtn' + (danger ? ' danger' : '');
+    cancelBtn.style.display = cancel ? '' : 'none';
+    const close = (val) => { scrim.classList.remove('open'); resolve(val); };
+    ok.onclick = () => close(true);
+    cancelBtn.onclick = () => close(false);
+    scrim.onclick = (e) => { if (e.target === scrim) close(false); };
+    scrim.classList.add('open');
+  });
+}
+function appInfo(msg, title = 'Obvestilo'){ return appConfirm(msg, { title, cancel: false }); }
+
+const opSvg = (opId) => OPERATIONS[opId]?.svg || 'wrench';
+const svgIcon = (name, cls = 'icon') => `<svg class="${cls}"><use href="#i-${name}"/></svg>`;
+
 function showView(name){
   state.view = name;
   $$('.view').forEach(v => v.classList.remove('active'));
@@ -71,7 +93,7 @@ function showView(name){
   if (el) el.classList.add('active');
   // Karta potrebuje invalidate size, ko pokažemo njen view
   if (name === 'map' && state.map){
-    setTimeout(() => state.map.map && state.map.map.invalidateSize(), 50);
+    setTimeout(() => state.map && state.map.resize(), 50);
   }
   if (name === 'home') renderHome();
   if (name === 'history') renderHistory();
@@ -85,10 +107,17 @@ function fmtTs(ms){
 }
 
 // ============ INIT ============
+function applyTheme(){
+  document.documentElement.dataset.theme = state.settings.dayTheme ? 'day' : '';
+  const mc = document.querySelector('meta[name=theme-color]');
+  if (mc) mc.setAttribute('content', state.settings.dayTheme ? '#eef1ec' : '#0a0d0b');
+}
+
 async function init(){
   // Load settings
   const s = await getKV('settings');
   if (s) Object.assign(state.settings, s);
+  applyTheme();
 
   // Load parcels (or demo if none saved)
   state.parcels = await savedParcels();
@@ -190,7 +219,7 @@ function renderHome(){
   const opGrid = $('#opGrid');
   opGrid.innerHTML = Object.values(OPERATIONS).map(op => `
     <button class="op-card ${state.selectedOpId === op.id ? 'selected' : ''}" data-id="${op.id}">
-      <div class="op-icon" style="background:${op.color}22;border:1px solid ${op.color}55">${op.icon}</div>
+      <div class="op-icon" style="color:${op.color};background:${op.color}18;border:1px solid ${op.color}55">${svgIcon(op.svg || 'wrench')}</div>
       <div class="op-name">${op.name}</div>
       <div class="op-desc">${op.valueLabel}${op.valueUnit ? ' • ' + op.valueUnit : ''}</div>
     </button>
@@ -203,8 +232,8 @@ function renderHome(){
   const machRow = $('#machineRow');
   machRow.innerHTML = MACHINES.map(m => `
     <button class="picker-chip ${state.selectedMachineId === m.id ? 'selected' : ''}" data-id="${m.id}">
-      <span>${m.icon} ${m.name}</span>
-      <small>${m.width.toFixed(1)} m</small>
+      <span>${m.name}</span>
+      <small>${fmtNum(m.width, 1)} m</small>
     </button>
   `).join('');
   machRow.querySelectorAll('.picker-chip').forEach(btn => {
@@ -219,7 +248,7 @@ function renderHome(){
     parcelRow.innerHTML = state.parcels.map(p => `
       <button class="picker-chip ${state.selectedParcelId === p.id ? 'selected' : ''}" data-id="${p.id}">
         <span>${escapeHtml(p.name)}</span>
-        <small>${p.ha.toFixed(2)} ha</small>
+        <small>${fmtNum(p.ha, 2)} ha</small>
       </button>
     `).join('');
     parcelRow.querySelectorAll('.picker-chip').forEach(btn => {
@@ -260,14 +289,15 @@ async function renderSeasonStats(){
   }
   grid.innerHTML = Object.values(byOp).map(x => `
     <div class="season-item" style="border-left-color:${x.op?.color || '#22c55e'}">
-      <div class="season-op">${x.op?.icon || ''} ${escapeHtml(x.op?.name || '?')}</div>
-      <div class="season-ha">${x.ha.toFixed(1)} <span>ha</span></div>
-      <div class="season-n">${x.n}× </div>
+      <div class="season-op" style="color:${x.op?.color || 'inherit'}">${svgIcon(opSvg(x.op?.id), 'icon sm')}</div>
+      <div class="season-name">${escapeHtml(x.op?.name || '?')}</div>
+      <div class="season-ha">${fmtNum(x.ha, 1)} <span>ha</span></div>
+      <div class="season-n">${x.n}×</div>
     </div>
   `).join('') + `
     <div class="season-item total">
-      <div class="season-op">Skupaj</div>
-      <div class="season-ha">${totalHa.toFixed(1)} <span>ha</span></div>
+      <div class="season-name" style="flex:1">Skupaj</div>
+      <div class="season-ha">${fmtNum(totalHa, 1)} <span>ha</span></div>
       <div class="season-n">${formatDuration(totalMs)}</div>
     </div>`;
 }
@@ -284,6 +314,9 @@ function autoPickMachineForOp(){
 function wireHome(){
   $('#homeSettingsBtn').onclick = () => showView('settings');
   $('#homeHistoryBtn').onclick = () => showView('history');
+  $('#homeHistoryBtn2').onclick = () => showView('history');
+  $('#homeSettingsBtn2').onclick = () => showView('settings');
+  $('#homeInstallBtn').onclick = () => appInfo('V meniju brskalnika (⋮) izberi "Dodaj na začetni zaslon" oz. "Namesti aplikacijo".', 'Namestitev');
   $('#homeNote').addEventListener('input', e => state.note = e.target.value);
 
   $('#homeStartBtn').onclick = () => startSession();
@@ -324,7 +357,7 @@ function ensureMap(){
   window.addEventListener('pointerup', () => pointerDown = false);
   state.map.map.on('click', (e) => {
     if (gps.source !== 'sim') return;
-    gps.setSimTarget({ lat: e.latlng.lat, lng: e.latlng.lng });
+    gps.setSimTarget({ lat: e.lngLat.lat, lng: e.lngLat.lng });
   });
 
   return state.map;
@@ -332,19 +365,14 @@ function ensureMap(){
 
 function refreshParcelsOnMap(){
   if (!state.map) return;
-  const feats = state.parcels.map(p => ({
-    ...p.feature,
-    id: p.id,
-    properties: { ...(p.feature.properties || {}), name: p.name, ha: p.ha }
-  }));
-  state.map.setParcels(feats, state.selectedParcelId);
+  state.map.setParcels(state.parcels, state.selectedParcelId);
 }
 
 function setSimTargetFromPointer(ev){
   if (!state.map) return;
   const rect = ev.currentTarget.getBoundingClientRect();
   const x = ev.clientX - rect.left, y = ev.clientY - rect.top;
-  const ll = state.map.map.containerPointToLatLng(L.point(x, y));
+  const ll = state.map.map.unproject([x, y]);
   gps.setSimTarget({ lat: ll.lat, lng: ll.lng });
 }
 
@@ -359,6 +387,11 @@ function wireMap(){
   $('#mapTerrainBtn').onclick = () => {
     const onSat = state.map.toggleSatellite();
     toast(onSat ? 'Satelit' : 'Zemljevid');
+  };
+  $('#map3dBtn').onclick = () => {
+    const on = state.map.setMode3D(!state.map.is3D);
+    $('#map3dBtn').classList.toggle('on3d', on);
+    toast(on ? '3D pogled (teren)' : '2D pogled');
   };
   $('#mapLayersBtn').onclick = () => {
     state.map.follow = !state.map.follow;
@@ -402,10 +435,11 @@ function updateAbBtn(){
   else { btn.textContent = 'A·B'; btn.className = 'iconbtn glass ab'; }
 }
 
-function onAbButton(){
+async function onAbButton(){
   const g = state.guidance;
   const f = gps.lastFix;
   if (!g.a){
+    navigator.vibrate?.(40);
     if (!f){ toast('Ni GPS pozicije.'); return; }
     g.setA(f);
     state.map.clearGuidance();
@@ -414,13 +448,14 @@ function onAbButton(){
   } else if (!g.active){
     if (!f){ toast('Ni GPS pozicije.'); return; }
     if (!g.setB(f)){ toast('Premalo razmika od A (min 5 m).'); return; }
+    navigator.vibrate?.([40, 60, 40]);
     g.widthM = effectiveWidthM();
     state.map.setAbMarker('B', [f.lat, f.lng]);
     guidanceEnable();
     saveAbToParcel(g.toJSON());
     toast('AB linija nastavljena.');
   } else {
-    if (!confirm('Odstrani AB linijo?')) return;
+    if (!await appConfirm('Odstranim AB vodilno linijo?', { okLabel: 'Odstrani', danger: true })) return;
     g.reset();
     guidanceDisable();
     saveAbToParcel(null);
@@ -476,6 +511,7 @@ function guidanceOnFix(fix){
       Date.now() - _lastBeepAt > GUIDANCE.beepEveryMs){
     _lastBeepAt = Date.now();
     beep();
+    navigator.vibrate?.(150);
   }
 }
 
@@ -488,7 +524,7 @@ function updateLightbar(r){
     $('#lbXte').textContent = absCm.toFixed(0);
     $('#lbUnit').textContent = 'cm';
   } else {
-    $('#lbXte').textContent = (absCm / 100).toFixed(1);
+    $('#lbXte').textContent = fmtNum(absCm / 100, 1);
     $('#lbUnit').textContent = 'm';
   }
   $('#lbLine').textContent = lineLabel(r.lineIdx) + (r.flipped ? ' ↩' : '');
@@ -546,10 +582,10 @@ function renderDrawer(){
   const s = state.session;
   const op = s ? OPERATIONS[s.operation.id] : OPERATIONS[state.selectedOpId];
   const w = effectiveWidthM();
-  $('#drawerOp').textContent = op ? `${op.icon} ${op.name}` : '—';
-  $('#drawerMachine').textContent = s?.machine ? `${s.machine.icon} ${s.machine.name}` : '—';
+  $('#drawerOp').textContent = op ? op.name : '—';
+  $('#drawerMachine').textContent = s?.machine ? s.machine.name : '—';
   $('#drawerParcel').textContent = s?.parcel ? s.parcel.name : (state.selectedParcelId ? state.parcels.find(p => p.id === state.selectedParcelId)?.name : '—');
-  $('#drawerWidth').textContent = w.toFixed(1) + ' m';
+  $('#drawerWidth').textContent = fmtNum(w, 1) + ' m';
   $('#drawerGpsSource').textContent = gpsSourceLabel(state.settings.gpsSource);
 
   // BLE
@@ -589,7 +625,7 @@ function renderDrawer(){
   $('#drawerWidthOverride').oninput = e => {
     const v = parseFloat(e.target.value);
     state.settings.widthOverride = (isFinite(v) && v > 0) ? v : null;
-    $('#drawerWidth').textContent = effectiveWidthM().toFixed(1) + ' m';
+    $('#drawerWidth').textContent = fmtNum(effectiveWidthM(), 1) + ' m';
     persistSettings();
   };
   $('#drawerGuideBeep').checked = state.settings.guidanceBeep;
@@ -597,12 +633,18 @@ function renderDrawer(){
     state.settings.guidanceBeep = e.target.checked;
     persistSettings();
   };
+  $('#drawerDayMode').checked = state.settings.dayTheme;
+  $('#drawerDayMode').onchange = e => {
+    state.settings.dayTheme = e.target.checked;
+    applyTheme();
+    persistSettings();
+  };
   $$('#drawerGpsRadios input[type=radio]').forEach(r => {
     r.onchange = () => { if (r.checked) setGpsSource(r.value); };
   });
-  $('#drawerClearBtn').onclick = () => {
+  $('#drawerClearBtn').onclick = async () => {
     if (!state.session) { toast('Ni aktivne seje.'); return; }
-    if (!confirm('Počisti trenutno barvanje?')) return;
+    if (!await appConfirm('Počistim trenutno barvanje?', { okLabel: 'Počisti', danger: true })) return;
     if (state.map) state.map.clearCoverage();
     state.session.strips = [];
     state.session.coveredHa = 0;
@@ -610,9 +652,9 @@ function renderDrawer(){
     updateMapStats();
     toast('Počiščeno');
   };
-  $('#drawerGoHome').onclick = () => {
+  $('#drawerGoHome').onclick = async () => {
     if (state.session && state.session.state === 'running'){
-      if (!confirm('Seja teče. Odprti pogled Domov (seja ostane)?')) return;
+      if (!await appConfirm('Seja teče. Odprem Domov (seja ostane aktivna)?', { okLabel: 'Domov' })) return;
     }
     closeDrawer();
     showView('home');
@@ -675,12 +717,12 @@ function startSession(){
 
   // Naslov na mapi
   $('#mapParcelName').textContent = parcel ? parcel.name : '—';
-  $('#mapMachineName').textContent = `${op.icon} ${op.name} • ${machine.name} • ${effectiveWidthM().toFixed(1)} m`;
+  $('#mapMachineName').textContent = `${op.name} • ${machine.name} • ${fmtNum(effectiveWidthM(), 1)} m`;
 
   // Fit na parcelo (po invalidateSize)
   setTimeout(() => {
     if (state.map){
-      state.map.map.invalidateSize();
+      state.map.resize();
       if (parcel) state.map.fitToParcel(parcel.id);
     }
   }, 60);
@@ -719,9 +761,9 @@ function resumeSession(){
   setTrackingUI('running');
   toast('Nadaljuj');
 }
-function confirmStopSession(){
+async function confirmStopSession(){
   if (!state.session) { toast('Ni aktivne seje.'); return; }
-  if (!confirm('Zaključi in shrani sejo?')) return;
+  if (!await appConfirm('Zaključim in shranim sejo?', { okLabel: 'Shrani' })) return;
   stopSession();
 }
 async function stopSession(){
@@ -799,7 +841,7 @@ function onFix(fix){
   }
 
   // Posodobi stats (hitrost, GPS kakovost)
-  $('#speedVal').textContent = (fix.spdKmh || 0).toFixed(1);
+  $('#speedVal').textContent = fmtNum(fix.spdKmh || 0, 1);
   $('#gpsAccuracy').textContent = fix.accuracyM ? '±' + fix.accuracyM.toFixed(0) + 'm' : '—';
   refreshGpsPill(fix);
 
@@ -826,16 +868,16 @@ function onFix(fix){
 function updateMapStats(){
   const s = state.session;
   if (!s) return;
-  $('#doneVal').textContent = s.coveredHa.toFixed(3);
+  $('#doneVal').textContent = fmtNum(s.coveredHa, 3);
   $('#passesVal').textContent = String(s.passes);
-  $('#widthVal').textContent = effectiveWidthM().toFixed(1);
+  $('#widthVal').textContent = fmtNum(effectiveWidthM(), 1);
   if (s.parcel){
     const pct = Math.min(100, Math.round((s.coveredHa / s.parcel.ha) * 100));
     $('#pctVal').textContent = pct + '%';
     $('#progressFill').style.width = pct + '%';
     // Preostalo + ocena časa iz trenutne hitrosti in širine
     const remainHa = Math.max(0, s.parcel.ha - s.coveredHa);
-    $('#remainVal').textContent = remainHa.toFixed(2);
+    $('#remainVal').textContent = fmtNum(remainHa, 2);
     const spd = gps.lastFix?.spdKmh || 0;
     const haPerH = spd * effectiveWidthM() / 10; // km/h * m = 1000 m²/h = 0.1 ha/h
     $('#etaVal').textContent = (remainHa > 0.005 && haPerH > 0.05)
@@ -896,14 +938,14 @@ function refreshTelemetryUI(){
     state.map.setVehicleActive(active || !state.session.operation.requiresActive);
   }
   // Posodobi širino v label-u
-  $('#widthVal') && ($('#widthVal').textContent = effectiveWidthM().toFixed(1));
+  $('#widthVal') && ($('#widthVal').textContent = fmtNum(effectiveWidthM(), 1));
   // Drawer widths
   if (document.getElementById('drawerWidth')){
-    document.getElementById('drawerWidth').textContent = effectiveWidthM().toFixed(1) + ' m';
+    document.getElementById('drawerWidth').textContent = fmtNum(effectiveWidthM(), 1) + ' m';
   }
   // Flow
   if ($('#flowVal') && state.telemetry.flow != null){
-    $('#flowVal').textContent = state.telemetry.flow.toFixed(1);
+    $('#flowVal').textContent = fmtNum(state.telemetry.flow, 1);
   }
   // Status stroja (sejalnica preko BLE): ALARM > DVIGNJEN > SEJE > MIRUJE
   const ms = $('#machineState');
@@ -935,8 +977,8 @@ async function toggleBle(){
     toast('Povezano: ' + r.name);
     // Po povezavi ponudi, da preklopiš GPS vir na BLE
     if (state.settings.gpsSource !== 'ble'){
-      setTimeout(() => {
-        if (confirm('Uporabim GPS iz ESP32 modula?')){
+      setTimeout(async () => {
+        if (await appConfirm('Uporabim GPS iz ESP32 modula?', { okLabel: 'Uporabi' })){
           setGpsSource('ble');
         }
       }, 300);
@@ -984,7 +1026,7 @@ async function renderHistory(){
   const sumHa = sessions.reduce((a, s) => a + (s.coveredHa || 0), 0);
   const sumMs = sessions.reduce((a, s) => a + (s.durationMs || 0), 0);
   $('#historySummary').textContent = sessions.length
-    ? `${sessions.length} sej • ${sumHa.toFixed(1)} ha • ${formatDuration(sumMs)}`
+    ? `${sessions.length} sej • ${fmtNum(sumHa, 1)} ha • ${formatDuration(sumMs)}`
     : '—';
 
   if (!sessions.length){
@@ -1003,14 +1045,14 @@ async function renderHistory(){
     return `
       <div class="session-card" data-id="${s.id}">
         <div class="session-top">
-          <div class="session-icon" style="background:${op.color || '#22c55e'}30;color:${op.color || '#22c55e'}">${op.icon || '🚜'}</div>
+          <div class="session-icon" style="background:${op.color || '#22c55e'}22;color:${op.color || '#22c55e'}">${svgIcon(opSvg(op.id))}</div>
           <div class="session-info">
             <div class="session-title">${escapeHtml(op.name || 'Opravilo')} • ${escapeHtml(s.machine?.name || '')}</div>
             <div class="session-date">${fmtTs(s.startedAt)}${s.parcel ? ' • ' + escapeHtml(s.parcel.name) : ''}</div>
           </div>
         </div>
         <div class="session-metrics">
-          <div class="session-metric"><div class="v">${(s.coveredHa || 0).toFixed(2)}</div><div class="l">ha</div></div>
+          <div class="session-metric"><div class="v">${fmtNum(s.coveredHa || 0, 2)}</div><div class="l">ha</div></div>
           <div class="session-metric"><div class="v">${dist}</div><div class="l">pot</div></div>
           <div class="session-metric"><div class="v">${dur}</div><div class="l">čas</div></div>
           <div class="session-metric"><div class="v">${s.passes || 0}</div><div class="l">preh.</div></div>
@@ -1037,19 +1079,20 @@ async function openSessionDetail(id){
   const flowText = s.flowTotal != null ? s.flowTotal.toFixed(1) + ' ' + (op.unit || '') : '—';
   body.innerHTML = `
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-      <div class="session-icon" style="background:${op.color || '#22c55e'}30;color:${op.color || '#22c55e'};font-size:28px;width:52px;height:52px;border-radius:14px">${op.icon || '🚜'}</div>
+      <div class="session-icon" style="background:${op.color || '#22c55e'}22;color:${op.color || '#22c55e'};width:52px;height:52px">${svgIcon(opSvg(op.id), 'icon lg')}</div>
       <div>
         <div style="font-weight:800">${escapeHtml(op.name || '—')}</div>
         <div class="small muted">${fmtTs(s.startedAt)}${s.endedAt ? ' – ' + new Date(s.endedAt).toLocaleTimeString('sl-SI', {hour:'2-digit', minute:'2-digit'}) : ''}</div>
       </div>
     </div>
     <div class="session-metrics" style="grid-template-columns:repeat(2,1fr)">
-      <div class="session-metric"><div class="v">${(s.coveredHa || 0).toFixed(3)}</div><div class="l">ha</div></div>
+      <div class="session-metric"><div class="v">${fmtNum(s.coveredHa || 0, 3)}</div><div class="l">ha</div></div>
       <div class="session-metric"><div class="v">${formatDistance(s.distanceM || 0)}</div><div class="l">pot</div></div>
       <div class="session-metric"><div class="v">${dur}</div><div class="l">čas</div></div>
       <div class="session-metric"><div class="v">${s.passes || 0}</div><div class="l">preh.</div></div>
       <div class="session-metric"><div class="v">${s.machine?.name || '—'}</div><div class="l">stroj</div></div>
       <div class="session-metric"><div class="v">${s.parcel?.name || '—'}</div><div class="l">parcela</div></div>
+      ${s.parcel?.gerkPid ? `<div class="session-metric"><div class="v">${s.parcel.gerkPid}</div><div class="l">GERK</div></div>` : ''}
     </div>
     ${s.note ? `<div class="card" style="margin-top:10px"><div class="small muted">Opomba</div><div style="margin-top:4px">${escapeHtml(s.note)}</div></div>` : ''}
     <div class="btn-row" style="margin-top:12px">
@@ -1060,7 +1103,7 @@ async function openSessionDetail(id){
   $('#modalScrim').classList.add('open');
   $('#modalExportBtn').onclick = () => exportSessionAsGeoJSON(s);
   $('#modalDeleteBtn').onclick = async () => {
-    if (!confirm('Izbriši sejo?')) return;
+    if (!await appConfirm('Izbrišem sejo? Tega ni mogoče razveljaviti.', { okLabel: 'Izbriši', danger: true })) return;
     await deleteSession(s.id);
     closeModal();
     renderHistory();
@@ -1098,7 +1141,7 @@ async function exportSessionsCSV(){
   };
   const rows = [[
     'datum', 'zacetek', 'konec', 'trajanje_min', 'operacija', 'stroj', 'sirina_m',
-    'parcela', 'parcela_ha', 'obdelano_ha', 'razdalja_km', 'prehodi', 'poraba_skupaj', 'enota', 'opomba'
+    'parcela', 'gerk_pid', 'raba', 'parcela_ha', 'obdelano_ha', 'razdalja_km', 'prehodi', 'poraba_skupaj', 'enota', 'opomba'
   ]];
   for (const s of all){
     const d = new Date(s.startedAt);
@@ -1111,6 +1154,8 @@ async function exportSessionsCSV(){
       s.machine?.name || '',
       s.machine?.width ?? '',
       s.parcel?.name || '',
+      s.parcel?.gerkPid ?? '',
+      s.parcel?.raba ?? '',
       s.parcel?.ha != null ? s.parcel.ha.toFixed(2) : '',
       (s.coveredHa || 0).toFixed(3),
       ((s.distanceM || 0) / 1000).toFixed(2),
@@ -1136,10 +1181,16 @@ function sessionToGeoJSON(s){
         kind: 'track',
         sessionId: s.id,
         operation: s.operation?.name,
+        operationId: s.operation?.id,
         machine: s.machine?.name,
         startedAt: new Date(s.startedAt).toISOString(),
         coveredHa: s.coveredHa,
         distanceM: s.distanceM,
+        gerkPid: s.parcel?.gerkPid ?? null,
+        kmgMid: s.parcel?.feature?.properties?.KMG_MID ?? null,
+        flowTotal: s.flowTotal ?? null,
+        flowUnit: s.operation?.unit || null,
+        note: s.note || null,
         color: s.operation?.color
       },
       geometry: { type: 'LineString', coordinates: s.track.map(p => [p.lng, p.lat]) }
@@ -1149,7 +1200,8 @@ function sessionToGeoJSON(s){
   (s.strips || []).forEach((strip, i) => {
     features.push({
       type: 'Feature',
-      properties: { kind: 'coverage', sessionId: s.id, idx: i, operation: s.operation?.name, color: s.operation?.color },
+      properties: { kind: 'coverage', sessionId: s.id, idx: i, operation: s.operation?.name,
+        gerkPid: s.parcel?.gerkPid ?? null, color: s.operation?.color },
       geometry: { type: 'Polygon', coordinates: [ strip.map(p => [p[1], p[0]]).concat([[strip[0][1], strip[0][0]]]) ] }
     });
   });
@@ -1191,14 +1243,14 @@ function wireSettingsView(){
     e.target.value = '';
   });
   $('#settingsClearParcelsBtn').onclick = async () => {
-    if (!confirm('Izbriši vse parcele?')) return;
+    if (!await appConfirm('Izbrišem vse parcele?', { okLabel: 'Izbriši', danger: true })) return;
     await clearParcels();
     state.parcels = [];
     toast('Izbrisano');
     renderSettings();
   };
   $('#settingsResetSettingsBtn').onclick = async () => {
-    if (!confirm('Resetiraj nastavitve?')) return;
+    if (!await appConfirm('Resetiram nastavitve na privzete?', { okLabel: 'Resetiraj', danger: true })) return;
     await setKV('settings', null);
     location.reload();
   };
@@ -1214,6 +1266,11 @@ function wireSettingsView(){
     state.settings.autoSelectParcel = e.target.checked;
     persistSettings();
   });
+  $('#settingsDayMode').addEventListener('change', (e) => {
+    state.settings.dayTheme = e.target.checked;
+    applyTheme();
+    persistSettings();
+  });
   $('#settingsUseBleActive').addEventListener('change', (e) => {
     state.settings.useBleMachineActive = e.target.checked;
     persistSettings();
@@ -1226,7 +1283,7 @@ function wireSettingsView(){
   // Offline tiles
   $('#settingsPrewarmBtn').onclick = () => prewarmTilesForParcels();
   $('#settingsClearTilesBtn').onclick = async () => {
-    if (!confirm('Izbriši vse predprenesene tile-e? Karta bo brez interneta nedostopna.')) return;
+    if (!await appConfirm('Izbrišem vse predprenesene tile-e? Karta bo brez interneta nedostopna.', { okLabel: 'Izbriši', danger: true })) return;
     await clearTileCache();
     toast('Tile cache izbrisan');
     renderSettings();
@@ -1297,6 +1354,7 @@ async function renderSettings(){
   // Radio
   $$('input[name=settingsGpsSrc]').forEach(r => { r.checked = (r.value === state.settings.gpsSource); });
   $('#settingsAutoParcel').checked = state.settings.autoSelectParcel;
+  $('#settingsDayMode').checked = state.settings.dayTheme;
   $('#settingsUseBleActive').checked = state.settings.useBleMachineActive;
   $('#settingsUseBleWidth').checked = state.settings.useBleWidth;
 
@@ -1331,6 +1389,8 @@ async function importGeoJSON(gj){
       name: String(name),
       ha: f.properties?.ha ?? f.properties?.POVRSINA ?? featureHa(f),
       feature: f,
+      gerkPid: f.properties?.GERK_PID ?? null,
+      raba: f.properties?.RABA_ID ?? null,
       source: 'import',
       createdAt: Date.now()
     };

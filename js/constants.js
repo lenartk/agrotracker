@@ -3,7 +3,7 @@ export const OPERATIONS = {
   seed: {
     id: 'seed',
     name: 'Setev',
-    icon: '🌱',
+    icon: '🌱', svg: 'sprout',
     color: '#22c55e',
     fillOpacity: 0.38,
     valueLabel: 'Seme',
@@ -15,7 +15,7 @@ export const OPERATIONS = {
   fertilize_liquid: {
     id: 'fertilize_liquid',
     name: 'Gnojevka',
-    icon: '💧',
+    icon: '💧', svg: 'droplet',
     color: '#a855f7',
     fillOpacity: 0.38,
     valueLabel: 'Gnojevka',
@@ -27,7 +27,7 @@ export const OPERATIONS = {
   fertilize_solid: {
     id: 'fertilize_solid',
     name: 'Mineralno gnojilo',
-    icon: '🌾',
+    icon: '🌾', svg: 'scatter',
     color: '#f59e0b',
     fillOpacity: 0.38,
     valueLabel: 'Gnojilo',
@@ -39,7 +39,7 @@ export const OPERATIONS = {
   spray: {
     id: 'spray',
     name: 'Škropljenje',
-    icon: '💨',
+    icon: '💨', svg: 'wind',
     color: '#06b6d4',
     fillOpacity: 0.32,
     valueLabel: 'Škropivo',
@@ -51,7 +51,7 @@ export const OPERATIONS = {
   mow: {
     id: 'mow',
     name: 'Košnja',
-    icon: '✂️',
+    icon: '✂️', svg: 'scissors',
     color: '#84cc16',
     fillOpacity: 0.42,
     valueLabel: 'Prevoženo',
@@ -63,7 +63,7 @@ export const OPERATIONS = {
   harvest: {
     id: 'harvest',
     name: 'Spravilo',
-    icon: '🚜',
+    icon: '🚜', svg: 'wheat',
     color: '#eab308',
     fillOpacity: 0.40,
     valueLabel: 'Pridelek',
@@ -75,7 +75,7 @@ export const OPERATIONS = {
   custom: {
     id: 'custom',
     name: 'Drugo',
-    icon: '🔧',
+    icon: '🔧', svg: 'wrench',
     color: '#38bdf8',
     fillOpacity: 0.35,
     valueLabel: 'Vrednost',
@@ -88,12 +88,12 @@ export const OPERATIONS = {
 
 // Privzeti stroji (uporabnik jih lahko razširi v nastavitvah, v tej fazi so fiksni)
 export const MACHINES = [
-  { id: 'sejalnica',   name: 'Sejalnica',    width: 3.0,  icon: '🌱', tag: 'setev' },
-  { id: 'cisterna',    name: 'Cisterna',     width: 10.0, icon: '💧', tag: 'gnojevka' },
-  { id: 'trosilec',    name: 'Trosilec',     width: 12.0, icon: '🌾', tag: 'gnojilo' },
-  { id: 'skropilnica', name: 'Škropilnica',  width: 15.0, icon: '💨', tag: 'škropljenje' },
-  { id: 'kosilnica',   name: 'Kosilnica',    width: 2.4,  icon: '✂️', tag: 'košnja' },
-  { id: 'nakladalna',  name: 'Nakladalna',   width: 2.8,  icon: '🚜', tag: 'spravilo' },
+  { id: 'sejalnica',   name: 'Sejalnica',    width: 3.0,  icon: '🌱', svg: 'sprout', tag: 'setev' },
+  { id: 'cisterna',    name: 'Cisterna',     width: 10.0, icon: '💧', svg: 'droplet', tag: 'gnojevka' },
+  { id: 'trosilec',    name: 'Trosilec',     width: 12.0, icon: '🌾', svg: 'scatter', tag: 'gnojilo' },
+  { id: 'skropilnica', name: 'Škropilnica',  width: 15.0, icon: '💨', svg: 'wind', tag: 'škropljenje' },
+  { id: 'kosilnica',   name: 'Kosilnica',    width: 2.4,  icon: '✂️', svg: 'scissors', tag: 'košnja' },
+  { id: 'nakladalna',  name: 'Nakladalna',   width: 2.8,  icon: '🚜', svg: 'wheat', tag: 'spravilo' },
   { id: 'kombajn',     name: 'Kombajn',      width: 4.5,  icon: '🌽', tag: 'žetev' }
 ];
 

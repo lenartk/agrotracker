@@ -253,9 +253,11 @@ input:focus,select:focus{border-color:var(--accent)}
 .modal-body{overflow-y:auto;flex:1}
 .modal-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px}
 
-/* Leaflet overrides */
-.leaflet-control-container .leaflet-top, .leaflet-control-container .leaflet-bottom{display:none}
-.leaflet-pane.leaflet-overlay-pane path.parcel{cursor:pointer}
+/* MapLibre overrides */
+.maplibregl-ctrl-top-left,.maplibregl-ctrl-top-right,
+.maplibregl-ctrl-bottom-left,.maplibregl-ctrl-bottom-right{display:none}
+.maplibregl-canvas{outline:none}
+.sidecontrols .iconbtn.on3d{background:#14532d;border-color:var(--accent)}
 
 /* Desktop wrapper */
 @media (min-width:900px){
@@ -302,3 +304,47 @@ input:focus,select:focus{border-color:var(--accent)}
 .ab-marker{width:26px;height:26px;border-radius:6px;background:var(--amber);color:#111;
   display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;
   border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.6);font-family:var(--mono)}
+
+/* ============ SVG IKONE ============ */
+.icon{width:20px;height:20px;stroke:currentColor;fill:none;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.icon.sm{width:16px;height:16px}
+.icon.lg{width:26px;height:26px}
+.iconbtn .icon{width:19px;height:19px}
+.quick-btn .icon{width:20px;height:20px}
+.op-icon .icon{width:19px;height:19px}
+.season-op{flex:0 0 auto;display:flex;align-items:center}
+.season-name{flex:1;font-size:13px;font-weight:700}
+
+/* ============ DIALOG ============ */
+.modal.dlg{max-width:340px;gap:8px;padding:18px}
+.dlg-title{font-size:14px;font-weight:900;text-transform:uppercase;letter-spacing:.06em}
+.dlg-msg{font-size:14px;color:var(--text);line-height:1.5;margin:4px 0 8px}
+.dlg-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.dlg-actions .minibtn{padding:13px 10px;font-size:14px}
+
+/* ============ DNEVNI NAČIN (svetla tema za sonce) ============ */
+:root[data-theme="day"]{
+  --bg:#e9ede8; --panel:#f7f9f6; --panel2:#eef2ec; --sunken:#dde3dc;
+  --text:#131c16; --muted:#54645a;
+  --border:#b9c4ba; --border2:#c9d3c9;
+  --ok:#15803d; --bad:#b91c1c;
+}
+:root[data-theme="day"] .glass{background:rgba(247,250,246,.94)}
+:root[data-theme="day"] .iconbtn{color:var(--text)}
+:root[data-theme="day"] .pill{background:rgba(255,255,255,.9);color:#1a241d}
+:root[data-theme="day"] .pill.ok{color:#15803d}
+:root[data-theme="day"] .pill.warn{color:#b45309}
+:root[data-theme="day"] .pill.err{color:#b91c1c}
+:root[data-theme="day"] .toast{background:rgba(255,255,255,.96);color:#131c16}
+:root[data-theme="day"] .home-logo{background:#fff}
+:root[data-theme="day"] .lb-dot{opacity:.18}
+:root[data-theme="day"] .lb-dot.on{opacity:1}
+:root[data-theme="day"] input[type=text],
+:root[data-theme="day"] input[type=number],
+:root[data-theme="day"] select{color:var(--text)}
+:root[data-theme="day"] .minibtn{color:var(--text)}
+:root[data-theme="day"] .btn-row .minibtn.danger{color:#b91c1c}
+:root[data-theme="day"] .badge.on{color:#15803d}
+:root[data-theme="day"] .badge.off{color:#b91c1c}
+:root[data-theme="day"] .badge.pause{color:#b45309}

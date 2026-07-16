@@ -6,6 +6,45 @@ Format: [verzija] - YYYY-MM-DD
 
 ---
 
+## [v4.0] - 2026-07-16
+
+### Dodano — 2D/3D karta (MapLibre GL)
+
+- **Menjava zemljevidnega motorja Leaflet → MapLibre GL** (vendored, brez CDN).
+  Razlog: pravi 3D pogled s terenom za hribovske parcele — Leaflet tega ne zmore.
+  En motor pokriva obe opciji: gumb **3D** na karti preklopi teren (terrarium DEM,
+  prosti AWS vir, brez ključa) + nagib kamere; 2D = klasičen top-down.
+- Vsa logika ohranjena: parcele, pokritost (metrična širina črte tudi v 3D),
+  AB vodenje, markerji, sledenje vozilu. DEM tile-i se predpomnijo v SW (offline).
+
+### Dodano — GERK evidenca
+
+- `tools/gerk_extract.py <KMG-MID>` — iz uradnega javnega izvoza MKGP (208 MB,
+  prenese in cache-ira sam) izlušči GERK-e kmetije → GeoJSON za uvoz.
+- Uvoz ohrani **GERK_PID in rabo**; samodejno zaznan GERK se zabeleži v sejo.
+- Izvozi vsebujejo GERK_PID: CSV (stolpca gerk_pid, raba) in GeoJSON (track
+  properties: gerkPid, kmgMid, operationId, flowTotal/unit, note) — evidenca
+  je strojno uporabna v drugih programih (dnevnik gnojenja ipd.).
+- Neposreden prenos GERK-ov v aplikaciji ni mogoč: javni strežniki ne pošiljajo
+  CORS glav in ni javnega WFS (preverjeno) — zato skripta + uvoz.
+
+### Spremenjeno — resnejši izgled (P1)
+
+- **SVG ikone** (inline sprite) namesto emoji v vsem UI kromu in operacijah
+- **Lastni potrditveni dialogi** namesto native confirm()/alert()
+- **Decimalna vejica** (sl-SI) v vseh prikazih; izvozi ostajajo s piko (interop)
+- **Dnevni način** — svetla visokokontrastna tema za sonce (preklop v meniju
+  in nastavitvah, shranjeno)
+- Vibracija ob nastavitvi A/B in ob alarmu odklona
+
+### Tehnično
+
+- `vendor/maplibre-gl.{js,css}` (5.6.0), leaflet odstranjen
+- `APP_CACHE` v7 → **v8**; tile cache pokriva tudi DEM (elevation-tiles-prod)
+- Firmware nespremenjen (v3.2)
+
+---
+
 ## [v3.2] - 2026-07-16
 
 ### Dodano — združljivost s sejalnico

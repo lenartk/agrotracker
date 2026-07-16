@@ -207,3 +207,12 @@ export function smoothHeading(state, headingDeg, beta = GPS_FILTER.headingBeta){
     state: { s, c }
   };
 }
+
+// Slovenski prikaz števil (decimalna vejica) — samo za UI, izvozi ostanejo s piko
+const _nf = {};
+export function fmtNum(x, dec = 1){
+  if (x == null || isNaN(x)) return '—';
+  const k = dec;
+  _nf[k] = _nf[k] || new Intl.NumberFormat('sl-SI', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+  return _nf[k].format(x);
+}

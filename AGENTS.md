@@ -34,7 +34,7 @@ Te stvari so **odločene, ne predlagaj sprememb brez utemeljitve:**
 - **PWA, ne native APK.** Razlogi v `docs/PROJECT.md` (Arhitekturne odločitve).
 - **ES moduli**, brez bundler-ja (Vite, Webpack), brez TypeScript-a. Direktno `<script type="module">`.
 - **IndexedDB**, ne LocalStorage / SQLite WASM.
-- **Leaflet 1.9.4** lokalno v `vendor/`, ne CDN, ne Mapbox / MapLibre.
+- **MapLibre GL 5.x** lokalno v `vendor/` (od v4.0; prej Leaflet — menjava zaradi 3D terena, uporabnikova odločitev 2026-07-16). Brez CDN.
 - **NimBLE** stack na ESP32, ne klasični Arduino BLE.
 - **RS485 line-protocol** (`KEY:VALUE\n`), ne Modbus.
 - **Slovenščina** v UI in komentarjih.

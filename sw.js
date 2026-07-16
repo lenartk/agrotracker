@@ -4,7 +4,7 @@
 //   - Zemljevid tile-i — network-first z dolgotrajnim cache-om (za parcele, ki si jih že obiskal)
 //   - Vse ostalo — cache-first z network fallback-om
 
-const APP_CACHE = 'agrotracker-app-v7';
+const APP_CACHE = 'agrotracker-app-v8';
 const TILE_CACHE = 'agrotracker-tiles-v1';
 
 const SHELL = [
@@ -25,8 +25,8 @@ const SHELL = [
   './data/demo-parcels.geojson',
   './icons/icon-192-v3.png',
   './icons/icon-512-v3.png',
-  './vendor/leaflet.js',
-  './vendor/leaflet.css'
+  './vendor/maplibre-gl.js',
+  './vendor/maplibre-gl.css'
 ];
 
 self.addEventListener('install', (e) => {
@@ -47,7 +47,8 @@ self.addEventListener('activate', (e) => {
 
 function isTileRequest(url){
   return /tile\.openstreetmap\.org/.test(url) ||
-         /arcgisonline\.com/.test(url);
+         /arcgisonline\.com/.test(url) ||
+         /elevation-tiles-prod/.test(url);  // 3D teren (terrarium DEM)
 }
 
 self.addEventListener('fetch', (e) => {
