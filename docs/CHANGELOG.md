@@ -6,6 +6,22 @@ Format: [verzija] - YYYY-MM-DD
 
 ---
 
+## [v4.2.1] - 2026-07-16
+
+### Popravljeno — posodobitve na telefonu
+
+- **Telefon je lahko "obtičal" na stari verziji**: če je SW install med
+  10-minutnim CDN oknom GitHub Pages shranil staro vsebino, jo je cache-first
+  strategija stregla večno (sw.js pa se ni več spremenil → ni update sprožilca).
+  Shell se zdaj ob installu prenaša s `cache: 'reload'` (mimo HTTP/CDN cache).
+- **Samodejna posodobitev**: ko novi SW prevzame nadzor, se stran sama osveži
+  (toast "Posodobitev prenesena") — ročni "reseti" niso več potrebni.
+- **Nastavitve → O aplikaciji**: prikaz dejansko nameščene verzije
+  (predpomnilnik vN) + gumb **"Preveri posodobitev"**.
+- `APP_CACHE` v11
+
+---
+
 ## [v4.2] - 2026-07-16
 
 ### Dodano — samodejni uvoz GERK po KMG-MID

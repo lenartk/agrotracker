@@ -186,9 +186,23 @@ async function init(){
   showView('home');
   refreshOnlinePill();
 
-  // Register SW
+  // Register SW + samodejna posodobitev: ko novi SW prevzame nadzor,
+  // stran enkrat osvežimo — uporabniku ni treba več "resetirati" aplikacije.
   if ('serviceWorker' in navigator){
-    navigator.serviceWorker.register('./sw.js').catch(console.error);
+    let _swRefreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (_swRefreshing) return;
+      _swRefreshing = true;
+      location.reload();
+    });
+    navigator.serviceWorker.register('./sw.js').then(reg => {
+      reg.addEventListener('updatefound', () => {
+        const nw = reg.installing;
+        if (nw) nw.addEventListener('statechange', () => {
+          if (nw.state === 'installed') toast('Posodobitev prenesena — osvežujem…', 3000);
+        });
+      });
+    }).catch(console.error);
   }
 
   // Prewarm karte: ustvari jo v ozadju in nalozi tile-e za parcele,
@@ -1552,6 +1566,23 @@ async function renderSettings(){
 
   const ua = navigator.userAgent;
   $('#settingsBrowser').textContent = ua.length > 80 ? ua.slice(0, 80) + '…' : ua;
+
+  // Dejanska nameščena verzija (iz imena SW predpomnilnika) + ročna preverba
+  caches.keys().then(keys => {
+    const v = keys.filter(k => k.startsWith('agrotracker-app-')).sort().pop() || '—';
+    const el = $('#settingsCacheVer');
+    if (el) el.textContent = v.replace('agrotracker-app-', 'predpomnilnik ');
+  }).catch(()=>{});
+  $('#settingsUpdateBtn').onclick = async () => {
+    toast('Preverjam posodobitev…');
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg){
+        await reg.update();
+        setTimeout(() => toast('Če je na voljo nova verzija, se bo app sam osvežil.', 3500), 1200);
+      } else toast('Service worker ni registriran.');
+    } catch (e){ toast('Napaka: ' + (e.message || e), 3000); }
+  };
 }
 
 async function importGeoJSON(gj){

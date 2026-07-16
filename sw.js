@@ -4,7 +4,7 @@
 //   - Zemljevid tile-i — network-first z dolgotrajnim cache-om (za parcele, ki si jih že obiskal)
 //   - Vse ostalo — cache-first z network fallback-om
 
-const APP_CACHE = 'agrotracker-app-v10';
+const APP_CACHE = 'agrotracker-app-v11';
 const TILE_CACHE = 'agrotracker-tiles-v1';
 
 const SHELL = [
@@ -31,9 +31,14 @@ const SHELL = [
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(APP_CACHE).then(c => c.addAll(SHELL).catch(err => {
-      console.warn('SW cache.addAll partial fail', err);
-    })).then(() => self.skipWaiting())
+    caches.open(APP_CACHE).then(c =>
+      // cache:'reload' — shell VEDNO svež z omrežja, mimo HTTP/CDN predpomnilnika.
+      // Sicer lahko install med CDN oknom (max-age=600) shrani staro vsebino
+      // in jo cache-first streže večno (telefon "obtiči" na stari verziji).
+      c.addAll(SHELL.map(u => new Request(u, { cache: 'reload' }))).catch(err => {
+        console.warn('SW cache.addAll partial fail', err);
+      })
+    ).then(() => self.skipWaiting())
   );
 });
 
