@@ -291,10 +291,13 @@ async function addGerkAtCurrentPosition({ silent = false } = {}){
   return p;
 }
 
-// Uvoz GERK datoteke območja: vse v knjižnico; tvoje (po KMG-MID) takoj med parcele
+// Uvoz GERK podatkov območja: vse v knjižnico; tvoje (po KMG-MID) takoj med parcele
 async function importGerkArea(file){
-  const text = await file.text();
-  const gj = JSON.parse(text);
+  const gj = JSON.parse(await file.text());
+  return importGerkData(gj);
+}
+
+async function importGerkData(gj){
   const feats = (gj.type === 'FeatureCollection' ? gj.features : [gj])
     .filter(f => f?.geometry && (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon'));
   if (!feats.length) throw new Error('Ni veljavnih poligonov.');
@@ -1375,6 +1378,32 @@ function wireSettingsView(){
     }
     e.target.value = '';
   });
+  // "Sam prenesi in uvozi": datoteko zgradi GitHub Action (gerk-data.yml)
+  // iz KMG-MID v tools/gerk_config.json in jo objavi na Pages — isti origin, brez CORS.
+  $('#settingsFetchGerkBtn').onclick = async () => {
+    const mid = (state.settings.kmgMid || '').trim();
+    if (!mid){
+      appInfo('Najprej vpiši svoj KMG-MID.', 'KMG-MID manjka');
+      return;
+    }
+    toast('Prenašam GERK podatke…', 4000);
+    try {
+      const r = await fetch('./data/gerk-obmocje.geojson?v=' + Date.now(), { cache: 'reload' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const gj = await r.json();
+      const res = await importGerkData(gj);
+      state.parcels = await savedParcels();
+      renderSettings();
+      if (!res.added && res.mid){
+        await appInfo(`Knjižnica posodobljena (${res.lib} GERK-ov), a nobeden nima KMG-MID ${res.mid} — preveri, ali je v tools/gerk_config.json na GitHubu isti MID.`, 'Ni tvojih parcel');
+      } else {
+        await appInfo(`Knjižnica: ${res.lib} GERK-ov. Tvojih parcel dodanih: ${res.added}.`, 'GERK prenos uspel');
+      }
+    } catch (e){
+      await appInfo('Podatkovna datoteka še ni objavljena. Enkratna nastavitev: na GitHubu vpiši svoj KMG-MID v tools/gerk_config.json (Action potem vse naredi sam) — ali pa MID sporoči meni.', 'Ni podatkov');
+    }
+  };
+
   $('#settingsClearGerkLibBtn').onclick = async () => {
     if (!await appConfirm('Izbrišem GERK knjižnico območja? (Parcele ostanejo.)', { okLabel: 'Izbriši', danger: true })) return;
     await clearGerkLib();

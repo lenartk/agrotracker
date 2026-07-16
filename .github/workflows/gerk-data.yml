@@ -1,0 +1,68 @@
+# Samodejna izdelava GERK podatkov za AgroTracker.
+# MID se nastavi v tools/gerk_config.json — ob spremembi (ali 1. v mesecu,
+# ali ročno prek "Run workflow") Action prenese uradni javni izvoz MKGP,
+# izlušči GERK-e območja in objavi data/gerk-obmocje.geojson na Pages.
+# Aplikacija jo potegne z gumbom "Prenesi GERK-e" (isti origin, brez CORS).
+name: GERK data
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 1 * *'   # 1. v mesecu ob 3:17 UTC (GERK se menja ~letno)
+  push:
+    branches: [main]
+    paths:
+      - tools/gerk_config.json
+      - tools/gerk_extract.py
+      - .github/workflows/gerk-data.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preberi konfiguracijo
+        id: cfg
+        run: |
+          MID=$(python3 -c "import json;print(json.load(open('tools/gerk_config.json')).get('kmg_mid','') or '')")
+          KM=$(python3 -c "import json;print(json.load(open('tools/gerk_config.json')).get('radij_km',5))")
+          echo "mid=$MID" >> "$GITHUB_OUTPUT"
+          echo "km=$KM" >> "$GITHUB_OUTPUT"
+
+      - name: Preskok (MID ni nastavljen)
+        if: steps.cfg.outputs.mid == ''
+        run: echo "tools/gerk_config.json nima kmg_mid — nič za narediti."
+
+      - uses: actions/setup-python@v5
+        if: steps.cfg.outputs.mid != ''
+        with:
+          python-version: '3.11'
+
+      - name: Cache uradnega izvoza (208 MB)
+        if: steps.cfg.outputs.mid != ''
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/agrotracker
+          key: gerk-zip-v1
+
+      - name: Izlušči GERK-e
+        if: steps.cfg.outputs.mid != ''
+        run: |
+          pip install --quiet pyshp pyproj
+          mkdir -p data
+          python3 tools/gerk_extract.py "${{ steps.cfg.outputs.mid }}" \
+            --obmocje-km "${{ steps.cfg.outputs.km }}" \
+            -o data/gerk-obmocje.geojson
+
+      - name: Objavi (commit na main -> Pages)
+        if: steps.cfg.outputs.mid != ''
+        run: |
+          git config user.name "gerk-data-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/gerk-obmocje.geojson
+          git diff --cached --quiet || git commit -m "GERK podatki (auto, KMG-MID ${{ steps.cfg.outputs.mid }}, r=${{ steps.cfg.outputs.km }} km)"
+          git push

@@ -4,7 +4,7 @@
 //   - Zemljevid tile-i — network-first z dolgotrajnim cache-om (za parcele, ki si jih že obiskal)
 //   - Vse ostalo — cache-first z network fallback-om
 
-const APP_CACHE = 'agrotracker-app-v9';
+const APP_CACHE = 'agrotracker-app-v10';
 const TILE_CACHE = 'agrotracker-tiles-v1';
 
 const SHELL = [
@@ -69,6 +69,12 @@ self.addEventListener('fetch', (e) => {
         })
       )
     );
+    return;
+  }
+
+  // Generirani GERK podatki: vedno svež z omrežja (Action jih obnavlja)
+  if (url.pathname.endsWith('/data/gerk-obmocje.geojson')){
+    e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
     return;
   }
 

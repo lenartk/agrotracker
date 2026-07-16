@@ -54,7 +54,7 @@
       </div>
       <div style="flex:1">
         <div class="home-title">AGRO<em>TRACKER</em></div>
-        <div class="home-sub">GPS vodenje · sledenje · evidenca — v4.1</div>
+        <div class="home-sub">GPS vodenje · sledenje · evidenca — v4.2</div>
       </div>
       <button class="iconbtn circle" id="homeHistoryBtn" title="Zgodovina"><svg class="icon"><use href="#i-folder"/></svg></button>
       <button class="iconbtn circle" id="homeSettingsBtn" title="Nastavitve"><svg class="icon"><use href="#i-sliders"/></svg></button>
@@ -265,7 +265,8 @@
       <input type="file" id="fileImport" accept=".geojson,.json,application/geo+json,application/json" style="display:none">
       <input type="file" id="fileImportGerk" accept=".geojson,.json,application/geo+json,application/json" style="display:none">
       <div class="btn-row">
-        <button class="minibtn" id="settingsImportGerkBtn">Uvozi GERK območje</button>
+        <button class="minibtn" id="settingsFetchGerkBtn">Prenesi po MID-u (samodejno)</button>
+        <button class="minibtn" id="settingsImportGerkBtn">Uvozi GERK datoteko</button>
         <button class="minibtn" id="settingsImportBtn">Uvozi navaden GeoJSON</button>
         <button class="minibtn danger" id="settingsClearGerkLibBtn">Izbriši knjižnico</button>
         <button class="minibtn danger" id="settingsClearParcelsBtn">Izbriši vse parcele</button>
@@ -322,7 +323,7 @@
     <div class="card">
       <h3>O aplikaciji</h3>
       <div class="note">
-        AgroTracker v4.1 — GPS vodenje (AB linije + lightbar), 2D/3D karta s terenom, sledenje obdelanim površinam in GERK evidenca opravil.<br>
+        AgroTracker v4.2 — GPS vodenje (AB linije + lightbar), 2D/3D karta s terenom, sledenje obdelanim površinam in GERK evidenca opravil.<br>
         Povezava z ESP32 modulom preko Web Bluetooth.<br><br>
         <strong>Brskalnik:</strong> <span id="settingsBrowser" class="small muted"></span>
       </div>

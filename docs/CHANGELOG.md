@@ -6,6 +6,25 @@ Format: [verzija] - YYYY-MM-DD
 
 ---
 
+## [v4.2] - 2026-07-16
+
+### Dodano — samodejni uvoz GERK po KMG-MID
+
+- **Gumb "Prenesi po MID-u (samodejno)"** v Nastavitvah: aplikacija potegne
+  `data/gerk-obmocje.geojson` z lastnega origina in uvozi (parcele po MID +
+  knjižnica). Brez ročnih datotek.
+- **GitHub Action `gerk-data.yml`**: ob vpisu KMG-MID v `tools/gerk_config.json`
+  (enkratno; tudi prek GitHub web vmesnika), mesečno in na ročni zagon
+  prenese uradni javni izvoz MKGP (cache-iran), izlušči GERK-e območja in
+  objavi datoteko na Pages. GitHub je edini "strežnik" — brez lastne infrastrukture.
+- SW: generirana GERK datoteka se streže network-first (vedno sveža).
+
+### Tehnično
+
+- `APP_CACHE` v10
+
+---
+
 ## [v4.1] - 2026-07-16
 
 ### Dodano — GERK knjižnica (MID → parcele, in obratno)
