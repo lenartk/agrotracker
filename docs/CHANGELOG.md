@@ -6,6 +6,47 @@ Format: [verzija] - YYYY-MM-DD
 
 ---
 
+## [v5.0] - 2026-07-17
+
+### Dodano — geometrija priključka (asimetrični stroji)
+
+- Stroj ima poleg širine zdaj **doseg levo/desno od sredine** (npr. čelna+bočna
+  kosilnica: 1,5 m levo / 4,5 m desno), **zamik delovnega centra za anteno** in
+  oznako **vlečen** (sledi po tractrix krivulji) ali fiksen na hidravliki.
+- **Vizualni urejevalnik**: skica traktor+priključek se sproti riše ob vnosu.
+- Trak pokritosti se riše na dejanski legi priključka; tanka črta ostane pot
+  traktorja; na karti se pokaže rumen obris priključka. Polni pomen dobi z RTK.
+
+### Dodano — sloji in predpisne karte (precizno kmetijstvo, 1. korak)
+
+- **Sloji**: uvoz GeoJSON s številčno lastnostjo (pH, P₂O₅, K₂O, humus, pridelek)
+  → barvna lestvica na karti (modra=malo, zelena, rdeča=veliko).
+- **Predpisne karte**: sloj označiš kot "predpisna karta" → med delom HUD kaže
+  ciljni odmerek trenutne cone, cilj se pošlje modulu po BLE (ukaz `rate`).
+  Modul ga hrani in vrača v telemetriji; samodejno nastavljanje sejalnice
+  pride z nadgradnjo njenega firmware-a (varen okvir na RS485).
+
+### Dodano — ISOBUS/CAN priprava
+
+- Firmware zna ob `-D CAN_ENABLED` (SN65HVD230 na GPIO21/22) **poslušati
+  traktorjev J1939**: obrati motorja (EEC1) in trenutna poraba (LFE) →
+  telemetrija `rpm`, `fuellh`; prikaz v meniju.
+- Seja integrira **realno porabo goriva** (litri); statistika stroja pokaže
+  "Gorivo (CAN, realno)" namesto ocene, ko podatek obstaja.
+
+### Dodano — popravljanje sej
+
+- Zgodovina → seja → **Prikaži na karti** (pokritost + pot, brez urejanja) ali
+  **Uredi**: tap po pobarvanem izbriše trakove v radiju delovne širine,
+  **Razveljavi** vrača po korakih, **Shrani** preračuna ha in zapiše.
+
+### Tehnično
+
+- `createStrip(latOffM)`, `offsetBack/trailedFollow` v geo.js (+ `tests/test_geometry.mjs`)
+- IndexedDB v3 (store `layers`); `APP_CACHE` v16
+
+---
+
 ## [v4.6] - 2026-07-17
 
 ### Spremenjeno — čista karta (HUD) in glavna tipka stroja

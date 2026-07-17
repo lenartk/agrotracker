@@ -53,6 +53,8 @@ export class MapController {
           parcels: { type: 'geojson', data: FC() },
           prevcov: { type: 'geojson', data: FC() },
           drive:   { type: 'geojson', data: FC() },
+          impl:    { type: 'geojson', data: FC() },
+          overlay: { type: 'geojson', data: FC() },
           cov:     { type: 'geojson', data: FC() },
           guide:   { type: 'geojson', data: FC() }
         },
@@ -63,6 +65,10 @@ export class MapController {
           { id: 'hillshade', type: 'hillshade', source: 'dem',
             layout: { visibility: 'none' },
             paint: { 'hillshade-exaggeration': 0.35 } },
+          { id: 'overlay-fill', type: 'fill', source: 'overlay',
+            paint: { 'fill-color': ['coalesce', ['get', '_c'], '#888888'], 'fill-opacity': 0.35 } },
+          { id: 'overlay-line', type: 'line', source: 'overlay',
+            paint: { 'line-color': ['coalesce', ['get', '_c'], '#888888'], 'line-width': 1, 'line-opacity': 0.8 } },
           { id: 'prevcov-fill', type: 'fill', source: 'prevcov',
             paint: { 'fill-color': '#22c55e', 'fill-opacity': 0.14 } },
           { id: 'drive-line', type: 'line', source: 'drive',
@@ -85,7 +91,9 @@ export class MapController {
                      'line-opacity': 0.45, 'line-dasharray': [4, 5] } },
           { id: 'guide-active', type: 'line', source: 'guide',
             filter: ['==', ['get', 'active'], 1],
-            paint: { 'line-color': '#f59e0b', 'line-width': 4, 'line-opacity': 0.95 } }
+            paint: { 'line-color': '#f59e0b', 'line-width': 4, 'line-opacity': 0.95 } },
+          { id: 'impl-line', type: 'line', source: 'impl',
+            paint: { 'line-color': '#facc15', 'line-width': 2, 'line-opacity': 0.9 } }
         ]
       }
     });
@@ -370,6 +378,31 @@ export class MapController {
     this._abMarkers[label] = new maplibregl.Marker({ element: el })
       .setLngLat([latlng[1], latlng[0]]).addTo(this.map);
   }
+
+  // Obris priključka: pravokotnik okoli delovnega centra glede na smer
+  setImplementRect(center, headingDeg, geo){
+    const r = headingDeg * Math.PI / 180;
+    const ux = Math.sin(r), uy = Math.cos(r);       // smer vožnje (E,N)
+    const nx = -uy, ny = ux;                         // levo
+    const kx = 111320 * Math.cos(center.lat * Math.PI / 180);
+    const oL = geo.latOff + geo.width / 2, oR = geo.latOff - geo.width / 2;
+    const dLen = 0.7;                                // navidezna dolžina orodja
+    const pt = (t, o) => [
+      center.lng + (t * ux + o * nx) / kx,
+      center.lat + (t * uy + o * ny) / 111320
+    ];
+    const ring = [pt(dLen, oL), pt(dLen, oR), pt(-dLen, oR), pt(-dLen, oL), pt(dLen, oL)];
+    this._run(() => this.map.getSource('impl').setData(FC([{
+      type: 'Feature', properties: {},
+      geometry: { type: 'LineString', coordinates: ring }
+    }])));
+  }
+
+  setOverlay(features){
+    this._run(() => this.map.getSource('overlay').setData(FC(features || [])));
+  }
+
+  clearImplementRect(){ this._run(() => this.map.getSource('impl').setData(FC())); }
 
   clearGuidance(){
     this._run(() => this.map.getSource('guide').setData(FC()));

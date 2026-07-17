@@ -55,7 +55,7 @@
       </div>
       <div style="flex:1">
         <div class="home-title">AGRO<em>TRACKER</em></div>
-        <div class="home-sub">GPS vodenje · sledenje · evidenca — v4.6</div>
+        <div class="home-sub">GPS vodenje · sledenje · evidenca — v5.0</div>
       </div>
       <button class="iconbtn circle" id="homeHistoryBtn" title="Zgodovina"><svg class="icon"><use href="#i-folder"/></svg></button>
       <button class="iconbtn circle" id="homeSettingsBtn" title="Nastavitve"><svg class="icon"><use href="#i-sliders"/></svg></button>
@@ -113,7 +113,7 @@
         <span id="doneVal">0,000</span><small>ha</small>
       </div>
       <div class="hud-line"><span id="mapParcelName">—</span></div>
-      <div class="hud-line sm"><span id="mapMachineName">—</span></div>
+      <div class="hud-line sm"><span id="mapMachineName">—</span> <span id="rxTarget" class="hud-stat warn"></span></div>
       <div class="hud-line tiny">
         <span id="gpsPill" class="hud-stat">Brez GPS</span><span class="hud-dot">·</span><span id="blePill" class="hud-stat">Brez stroja</span><span class="hud-dot">·</span><span id="onlinePill" class="hud-stat">—</span><span class="hud-dot">·</span><span id="trackingBadge" class="hud-stat off">Ustavljeno</span>
       </div>
@@ -167,6 +167,8 @@
           <div class="rowline"><span class="small muted">Širina</span><strong id="drawerWidth">—</strong></div>
           <div class="rowline"><span class="small muted">GPS vir</span><strong id="drawerGpsSource">—</strong></div>
           <div class="rowline"><span class="small muted">Pretok</span><strong><span id="flowVal">—</span></strong></div>
+          <div class="rowline"><span class="small muted">Obrati (CAN)</span><strong><span id="rpmVal">—</span></strong></div>
+          <div class="rowline"><span class="small muted">Poraba (CAN)</span><strong><span id="fuelLhVal">—</span></strong></div>
         </div>
 
         <div class="card">
@@ -267,6 +269,14 @@
     </div>
 
     <div class="card">
+      <h3>Sloji (analize prsti, predpisne karte)</h3>
+      <div class="hint">Uvozi GeoJSON s številčno lastnostjo (pH, P, K, odmerek ...). Prikaže se kot barvna lestvica na karti. "Predpisna karta" med delom v HUD kaže ciljni odmerek cone in ga pošlje modulu.</div>
+      <input type="file" id="fileImportLayer" accept=".geojson,.json" style="display:none">
+      <div id="settingsLayersList"></div>
+      <button class="minibtn" id="settingsImportLayerBtn" style="width:100%;margin-top:8px">Uvozi sloj (GeoJSON)</button>
+    </div>
+
+    <div class="card">
       <h3>Prikaz</h3>
       <label class="toggle"><span>Dnevni način (svetla tema za sonce)</span><input type="checkbox" id="settingsDayMode"></label>
     </div>
@@ -316,7 +326,7 @@
     <div class="card">
       <h3>O aplikaciji</h3>
       <div class="note">
-        AgroTracker v4.6 — GPS vodenje (AB linije + lightbar), 2D/3D karta s terenom, sledenje obdelanim površinam in GERK evidenca opravil.<br>
+        AgroTracker v5.0 — GPS vodenje (AB linije + lightbar), 2D/3D karta s terenom, sledenje obdelanim površinam in GERK evidenca opravil.<br>
         Povezava z ESP32 modulom preko Web Bluetooth.<br><br>
         <strong>Brskalnik:</strong> <span id="settingsBrowser" class="small muted"></span><br>
         <strong>Nameščeno:</strong> <span id="settingsCacheVer" class="small muted">—</span>

@@ -75,6 +75,10 @@ struct MachineState {
   float machSpeedKmh = NAN;       // hitrost, kot jo vidi stroj
   float sessionAreaHa = NAN;      // površina, ki jo šteje stroj sam
   float setKgHa = NAN;            // nastavljeni odmerek (iz kabine)
+  float rxRateKgHa = NAN;         // ciljni odmerek s telefona (predpisna karta)
+  // ISOBUS/CAN (J1939) — ko je priklopljen transceiver (glej CAN_ENABLED):
+  float engRpm = NAN;
+  float fuelLh = NAN;
 } mach;
 
 // BLE
@@ -121,6 +125,11 @@ class RxCallbacks : public NimBLECharacteristicCallbacks {
       if (!doc["width"].isNull()) mach.width_m = (float)doc["width"];
       if (!doc["flow"].isNull()) mach.flow = (float)doc["flow"];
       Serial.println("Sim stanje posodobljeno iz telefona");
+    } else if (strcmp(cmd, "rate") == 0){
+      // Predpisna karta: ciljni odmerek iz telefona. Zaenkrat samo hranimo in
+      // vračamo v telemetriji (rxrate) — posredovanje sejalnici po RS485 pride
+      // z nadgradnjo njenega firmware-a (varen "override" okvir).
+      if (!doc["v"].isNull()) mach.rxRateKgHa = (float)doc["v"];
     } else if (strcmp(cmd, "setname") == 0){
       // Bi lahko preimenovali stroj (persistence z Preferences bi dodal)
       const char* n = doc["name"] | "";
@@ -283,6 +292,9 @@ void sendTelemetry(){
     if (!isnan(mach.sessionAreaHa)) doc["marea"] = mach.sessionAreaHa;
     if (!isnan(mach.setKgHa)) doc["set"] = mach.setKgHa;
   }
+  if (!isnan(mach.rxRateKgHa)) doc["rxrate"] = mach.rxRateKgHa;
+  if (!isnan(mach.engRpm)) doc["rpm"] = mach.engRpm;
+  if (!isnan(mach.fuelLh)) doc["fuellh"] = mach.fuelLh;
   String out; out.reserve(160);
   serializeJson(doc, out);
   sendJson(out);
@@ -304,6 +316,45 @@ void sendGps(){
   serializeJson(doc, out);
   sendJson(out);
 }
+
+// ----------- ISOBUS / CAN (J1939) — priprava -----------
+// Traktorjev CAN (diagnostični priključek) prek transceiverja (SN65HVD230, ~3 €).
+// Vklop: v platformio.ini odkomentiraj -D CAN_ENABLED (+ po potrebi pina).
+// Bere: EEC1 (PGN 61444) obrati motorja, LFE (PGN 65266) trenutna poraba.
+#ifdef CAN_ENABLED
+#include "driver/twai.h"
+#ifndef CAN_TX_PIN
+#define CAN_TX_PIN 21
+#endif
+#ifndef CAN_RX_PIN
+#define CAN_RX_PIN 22
+#endif
+
+void canInit(){
+  twai_general_config_t g = TWAI_GENERAL_CONFIG_DEFAULT((gpio_num_t)CAN_TX_PIN, (gpio_num_t)CAN_RX_PIN, TWAI_MODE_LISTEN_ONLY);
+  twai_timing_config_t t = TWAI_TIMING_CONFIG_250KBITS();   // J1939 = 250 kbit/s
+  twai_filter_config_t fcfg = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+  if (twai_driver_install(&g, &t, &fcfg) == ESP_OK && twai_start() == ESP_OK){
+    Serial.println("CAN (J1939) poslušanje aktivno");
+  } else {
+    Serial.println("CAN init NI uspel");
+  }
+}
+
+void canPoll(){
+  twai_message_t msg;
+  while (twai_receive(&msg, 0) == ESP_OK){
+    if (!msg.extd) continue;                     // J1939 = 29-bit ID
+    uint32_t pgn = (msg.identifier >> 8) & 0x3FFFF;
+    if ((pgn & 0xFF00) < 0xF000) pgn &= 0x3FF00; // PDU1: PS je naslov
+    if (pgn == 61444 && msg.data_length_code >= 5){        // EEC1
+      mach.engRpm = ((msg.data[4] << 8) | msg.data[3]) * 0.125f;
+    } else if (pgn == 65266 && msg.data_length_code >= 2){ // Fuel Economy (LFE)
+      mach.fuelLh = ((msg.data[1] << 8) | msg.data[0]) * 0.05f;
+    }
+  }
+}
+#endif
 
 // ----------- SETUP / LOOP -----------
 void setup(){
@@ -344,6 +395,9 @@ void setup(){
   NimBLEDevice::startAdvertising();
 
   Serial.println("BLE advertise zagnan, čakam povezavo...");
+#ifdef CAN_ENABLED
+  canInit();
+#endif
 }
 
 uint32_t lastTelem = 0;
@@ -357,6 +411,9 @@ void loop(){
 
   // RS485 vhod
   readRs485();
+#ifdef CAN_ENABLED
+  canPoll();
+#endif
 
 #ifdef SIM_MODE
   // Fiktivni premikajoči GPS + aktiven stroj (za test brez strojne opreme)

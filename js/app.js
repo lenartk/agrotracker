@@ -14,11 +14,12 @@ import {
   savedParcels, saveParcel, deleteParcel, clearParcels,
   savedSessions, saveSession, deleteSession, getSession,
   saveGerkLib, getGerkLib, clearGerkLib,
+  savedLayers, saveLayer, deleteLayer,
   getKV, setKV, newId, storageEstimate
 } from './storage.js';
 import {
   featureHa, bboxOfFeature, centroidOfFeature, pointInFeature,
-  formatDistance, formatDuration, fmtNum
+  formatDistance, formatDuration, fmtNum, offsetBack, trailedFollow, polygonAreaM2
 } from './geo.js';
 import {
   tilesForParcels, downloadTiles, tileCacheStats, clearTileCache, estimateTileCount
@@ -32,7 +33,7 @@ const state = {
   map: null,
   guidance: new Guidance(),
   gerkLib: null,          // FeatureCollection vseh GERK-ov območja (lazy iz IndexedDB)
-  telemetry: { active: null, width: null, flow: null, rs485ok: false, machine: null, lifted: null, alarm: 0, set: null },
+  telemetry: { active: null, width: null, flow: null, rs485ok: false, machine: null, lifted: null, alarm: 0, set: null, rpm: null, fuelLh: null },
   online: navigator.onLine,
   tileDownload: null,  // {abort, done, total} ko teče predprenos
   settings: {
@@ -89,11 +90,11 @@ function appInfo(msg, title = 'Obvestilo'){ return appConfirm(msg, { title, canc
 
 // Obrazec v dialogu: fields = [{key,label,type:'text'|'number'|'check',value,step?}]
 // Vrne objekt vrednosti ali null (preklic).
-function appForm(title, fields, okLabel = 'Shrani'){
+function appForm(title, fields, okLabel = 'Shrani', preview = null){
   return new Promise(resolve => {
     $('#dlgTitle').textContent = title;
     const msg = $('#dlgMsg');
-    msg.innerHTML = fields.map(f => {
+    msg.innerHTML = (preview ? '<div id="ffPreview"></div>' : '') + fields.map(f => {
       const id = 'ff_' + f.key;
       if (f.type === 'check'){
         return `<label class="toggle"><span>${f.label}</span><input type="checkbox" id="${id}" ${f.value ? 'checked' : ''}></label>`;
@@ -106,6 +107,27 @@ function appForm(title, fields, okLabel = 'Shrani'){
     ok.textContent = okLabel;
     ok.className = 'minibtn';
     cancelBtn.style.display = '';
+    const readVals = () => {
+      const out = {};
+      for (const f of fields){
+        const el = document.getElementById('ff_' + f.key);
+        if (!el) continue;
+        if (f.type === 'check') out[f.key] = el.checked;
+        else out[f.key] = el.value;
+      }
+      return out;
+    };
+    if (preview){
+      const upd = () => { const pv = document.getElementById('ffPreview'); if (pv) pv.innerHTML = preview(readVals()); };
+      setTimeout(() => {
+        fields.forEach(f => {
+          const el = document.getElementById('ff_' + f.key);
+          if (el) el.addEventListener('input', upd);
+          if (el && f.type === 'check') el.addEventListener('change', upd);
+        });
+        upd();
+      }, 0);
+    }
     const close = (val) => {
       scrim.classList.remove('open');
       msg.innerHTML = '';
@@ -216,6 +238,8 @@ async function init(){
     if (typeof m.lift === 'number') state.telemetry.lifted = !!m.lift;
     if (typeof m.alarm === 'number') state.telemetry.alarm = m.alarm;
     if (typeof m.set === 'number') state.telemetry.set = m.set;
+    if (typeof m.rpm === 'number') state.telemetry.rpm = m.rpm;
+    if (typeof m.fuellh === 'number') state.telemetry.fuelLh = m.fuellh;
     refreshTelemetryUI();
   });
 
@@ -279,6 +303,7 @@ async function init(){
     try {
       ensureMap();
       if (state.parcels.length) state.map.fitToAllParcels();
+      if (state.settings.activeLayerId) activateLayer(state.settings.activeLayerId);
     } catch (e){ console.warn('map prewarm', e); }
   }, 700);
 
@@ -358,6 +383,262 @@ function overlapMarkAndCheck(from, to){
   }
   if (overlap) _overlapHits++;
   return overlap;
+}
+
+// ============ POPRAVLJANJE SEJ (prikaz + radialni brisalec) ============
+// Iz zgodovine: sejo pokažemo na karti; v načinu brisanja tap odstrani trakove
+// v radiju, ha se preračuna, Shrani zapiše nazaj v IndexedDB.
+
+let _editS = null;          // seja v urejanju (kopija iz DB)
+let _editUndo = [];         // sklad izbrisanih [{idx, strip}] po korakih
+let _editClickBound = null;
+
+function stripCentroid(quad){
+  let la = 0, ln = 0;
+  quad.forEach(p => { la += p[0]; ln += p[1]; });
+  return { lat: la / quad.length, lng: ln / quad.length };
+}
+
+function recomputeSessionHa(s){
+  let m2 = 0;
+  for (const q of (s.strips || [])){
+    const ring = q.map(p => [p[1], p[0]]);
+    ring.push(ring[0]);
+    m2 += polygonAreaM2(ring);
+  }
+  s.coveredHa = m2 / 10000;
+  return s.coveredHa;
+}
+
+function editRenderStrips(){
+  const color = _editS.operation?.color || '#22c55e';
+  state.map.loadPrevCoverage(_editS.strips || [], color);
+}
+
+async function openSessionOnMap(id, editMode){
+  if (state.session && state.session.state === 'running'){
+    appInfo('Med aktivno sejo urejanje ni mogoče. Najprej shrani.', 'Seja teče');
+    return;
+  }
+  const s = await getSession(id);
+  if (!s) return;
+  closeModal();
+  ensureMap();
+  showView('map');
+  state.map.clearCoverage();
+  state.map.clearPrevCoverage();
+  state.map.clearGuidance();
+  _editS = s;
+  _editUndo = [];
+  editRenderStrips();
+  // pot
+  if (s.track?.length > 1){
+    state.map.setDriveStyle(1.6, '#ffffff');
+    for (let i = 1; i < s.track.length; i++){
+      state.map.paintDrive(s.track[i-1], s.track[i]);
+    }
+  }
+  // fit na sejo
+  const pts = (s.strips?.length ? s.strips.flat() : (s.track || []).map(p => [p.lat, p.lng]));
+  if (pts.length){
+    let mnLa = 90, mxLa = -90, mnLo = 180, mxLo = -180;
+    pts.forEach(p => {
+      const la = p.lat ?? p[0], lo = p.lng ?? p[1];
+      if (la < mnLa) mnLa = la; if (la > mxLa) mxLa = la;
+      if (lo < mnLo) mnLo = lo; if (lo > mxLo) mxLo = lo;
+    });
+    state.map.setFollow(false);
+    state.map.map.fitBounds([[mnLo, mnLa], [mxLo, mxLa]], { padding: 60, duration: 400 });
+  }
+  $('#mapParcelName').textContent = (editMode ? 'UREJANJE: ' : 'Ogled: ') + (s.parcel?.name || s.operation?.name || 'seja');
+  $('#mapMachineName').textContent = fmtTs(s.startedAt) + ' · ' + fmtNum(s.coveredHa || 0, 3) + ' ha';
+
+  if (editMode) enterEditMode();
+  else exitEditMode(false);
+}
+
+function enterEditMode(){
+  const start = $('#startBtn'), pause = $('#pauseBtn'), stop = $('#stopBtn');
+  start.textContent = 'Razveljavi';
+  start.className = 'bigbtn secondary';
+  start.disabled = false;
+  start.onclick = () => {
+    const last = _editUndo.pop();
+    if (!last){ toast('Ni kaj razveljaviti.'); return; }
+    last.forEach(x => _editS.strips.splice(x.idx, 0, x.strip));
+    editRenderStrips();
+    updateEditHa();
+  };
+  pause.textContent = 'Shrani';
+  pause.className = 'bigbtn primary';
+  pause.disabled = false;
+  pause.onclick = async () => {
+    recomputeSessionHa(_editS);
+    await saveSession(_editS);
+    toast('Popravki shranjeni: ' + fmtNum(_editS.coveredHa, 3) + ' ha');
+    exitEditView();
+  };
+  stop.textContent = 'Prekliči';
+  stop.className = 'bigbtn stop';
+  stop.disabled = false;
+  stop.onclick = () => exitEditView();
+
+  // tap po karti briše v radiju delovne širine
+  const radius = Math.max(3, (_editS.machine?.width || 3));
+  _editClickBound = (e) => {
+    const c = { lat: e.lngLat.lat, lng: e.lngLat.lng };
+    const removed = [];
+    for (let i = _editS.strips.length - 1; i >= 0; i--){
+      const cen = stripCentroid(_editS.strips[i]);
+      const dx = (cen.lng - c.lng) * 111320 * Math.cos(c.lat * Math.PI / 180);
+      const dy = (cen.lat - c.lat) * 111320;
+      if (dx*dx + dy*dy <= radius * radius){
+        removed.push({ idx: i, strip: _editS.strips[i] });
+        _editS.strips.splice(i, 1);
+      }
+    }
+    if (removed.length){
+      _editUndo.push(removed.reverse());
+      editRenderStrips();
+      updateEditHa();
+      navigator.vibrate?.(20);
+    }
+  };
+  state.map.map.on('click', _editClickBound);
+  toast('Brisanje: tapni po pobarvanem (radij ' + fmtNum(radius, 0) + ' m).', 4000);
+}
+
+function updateEditHa(){
+  recomputeSessionHa(_editS);
+  $('#mapMachineName').textContent = fmtTs(_editS.startedAt) + ' · ' + fmtNum(_editS.coveredHa, 3) + ' ha';
+}
+
+function exitEditMode(clear = true){
+  if (_editClickBound){ state.map.map.off('click', _editClickBound); _editClickBound = null; }
+  if (clear){ _editS = null; _editUndo = []; }
+}
+
+function exitEditView(){
+  exitEditMode(true);
+  state.map.clearPrevCoverage();
+  state.map.clearCoverage();
+  setTrackingUI('idle');
+  // povrni privzete handlerje tipk
+  wireMapButtons();
+  showView('history');
+}
+
+// ============ SLOJI: analize prsti / predpisne karte ============
+// Sloj = GeoJSON s številčno lastnostjo -> barvna lestvica na karti.
+// kind 'rx' = predpisna karta: vrednost je ciljni odmerek; ob GPS prehodu cone
+// se cilj pokaže v HUD in pošlje modulu (BLE) — stroj ga bo uporabil, ko bo
+// firmware sejalnice sprejel "rate" okvir (glej PROJECT.md vizija).
+
+let _activeLayer = null;   // {id,name,prop,kind,fc}
+let _lastRxRate = null;
+let _lastRxSentAt = 0;
+
+function layerColor(v, mn, mx){
+  const t = mx > mn ? Math.max(0, Math.min(1, (v - mn) / (mx - mn))) : 0.5;
+  // modra (malo) -> zelena -> rdeča (veliko)
+  const stops = [[37, 99, 235], [34, 197, 94], [239, 68, 68]];
+  const seg = t < 0.5 ? 0 : 1;
+  const tt = (t - seg * 0.5) * 2;
+  const c = stops[seg].map((s, i) => Math.round(s + (stops[seg + 1][i] - s) * tt));
+  return 'rgb(' + c.join(',') + ')';
+}
+
+async function activateLayer(id){
+  if (!id){ _activeLayer = null; state.map?.setOverlay([]); return; }
+  const all = await savedLayers();
+  const l = all.find(x => x.id === id);
+  if (!l){ _activeLayer = null; state.map?.setOverlay([]); return; }
+  _activeLayer = l;
+  const vals = l.fc.features.map(f => +f.properties?.[l.prop]).filter(v => isFinite(v));
+  const mn = Math.min(...vals), mx = Math.max(...vals);
+  const feats = l.fc.features.map(f => ({
+    ...f,
+    properties: { ...f.properties, _c: layerColor(+f.properties?.[l.prop], mn, mx) }
+  }));
+  ensureMap();
+  state.map.setOverlay(feats);
+  toast(`Sloj: ${l.name} (${l.prop}: ${fmtNum(mn, 1)}–${fmtNum(mx, 1)})`, 3000);
+}
+
+async function importLayerFile(file){
+  const gj = JSON.parse(await file.text());
+  const feats = (gj.type === 'FeatureCollection' ? gj.features : [gj]).filter(f => f?.geometry);
+  if (!feats.length) throw new Error('Ni veljavnih geometrij.');
+  // predlagaj prvo številčno lastnost
+  const props = Object.keys(feats[0].properties || {});
+  const firstNum = props.find(k => isFinite(+feats[0].properties[k])) || '';
+  const f = await appForm('Nov sloj', [
+    { key: 'name', label: 'Ime sloja (npr. pH 2026, Odmerek N)', type: 'text', value: file.name.replace(/\.(geo)?json$/i, '') },
+    { key: 'prop', label: `Lastnost z vrednostjo (na voljo: ${props.slice(0, 6).join(', ')})`, type: 'text', value: firstNum },
+    { key: 'rx', label: 'Predpisna karta (vrednost = ciljni odmerek)', type: 'check', value: false }
+  ], 'Uvozi');
+  if (!f || !f.prop) return null;
+  const layer = { id: newId('lay'), name: f.name || 'Sloj', prop: f.prop,
+                  kind: f.rx ? 'rx' : 'overlay',
+                  fc: { type: 'FeatureCollection', features: feats } };
+  await saveLayer(layer);
+  return layer;
+}
+
+async function renderLayersList(){
+  const el = $('#settingsLayersList');
+  if (!el) return;
+  const all = await savedLayers();
+  const act = state.settings.activeLayerId;
+  el.innerHTML = all.length ? all.map(l => `
+    <div class="rowline">
+      <label class="toggle" style="margin:0;flex:1">
+        <span>${escapeHtml(l.name)} <span class="small muted">${l.prop}${l.kind === 'rx' ? ' · predpisna' : ''}</span></span>
+        <input type="radio" name="layAct" value="${l.id}" ${act === l.id ? 'checked' : ''}>
+      </label>
+      <button class="minibtn danger" data-del="${l.id}" style="padding:6px 10px">✕</button>
+    </div>`).join('') + `
+    <label class="toggle"><span class="small muted">Brez sloja</span><input type="radio" name="layAct" value="" ${!act ? 'checked' : ''}></label>`
+    : '<div class="small muted">Ni slojev. Uvozi GeoJSON z analizami ali odmerki.</div>';
+  el.querySelectorAll('input[name=layAct]').forEach(r => {
+    r.onchange = async () => {
+      state.settings.activeLayerId = r.value || null;
+      await persistSettings();
+      activateLayer(r.value || null);
+    };
+  });
+  el.querySelectorAll('button[data-del]').forEach(b => {
+    b.onclick = async () => {
+      if (!await appConfirm('Izbrišem sloj?', { okLabel: 'Izbriši', danger: true })) return;
+      await deleteLayer(b.dataset.del);
+      if (state.settings.activeLayerId === b.dataset.del){
+        state.settings.activeLayerId = null;
+        activateLayer(null);
+        await persistSettings();
+      }
+      renderLayersList();
+    };
+  });
+}
+
+// Ob GPS fixu: če je aktivna predpisna karta, določi ciljni odmerek cone
+function rxOnFix(fix){
+  const el = $('#rxTarget');
+  if (!_activeLayer || _activeLayer.kind !== 'rx'){
+    if (el) el.textContent = '';
+    return;
+  }
+  const hit = _activeLayer.fc.features.find(f => pointInFeature(fix, f));
+  const rate = hit ? +hit.properties?.[_activeLayer.prop] : null;
+  if (el) el.textContent = rate != null && isFinite(rate) ? `· cilj ${fmtNum(rate, 1)}` : '· izven con';
+  if (rate != null && isFinite(rate) && rate !== _lastRxRate && Date.now() - _lastRxSentAt > 2000){
+    _lastRxRate = rate;
+    _lastRxSentAt = Date.now();
+    if (ble.connected){
+      ble.send({ c: 'rate', v: rate });
+      toast('Ciljni odmerek → modul: ' + fmtNum(rate, 1), 2000);
+    }
+  }
 }
 
 // ============ GERK KNJIŽNICA ============
@@ -588,6 +869,7 @@ function ensureMap(){
   $('#mapCenterBtn').classList.toggle('on', state.map.follow);
 
   state.map.onParcelClick = (id) => {
+    if (_editS) return; // med urejanjem seje klik na parcelo ne sme zoomirati
     state.selectedParcelId = id;
     state.map.highlightParcel(id);
     state.map.fitToParcel(id);
@@ -651,13 +933,7 @@ function wireMap(){
   };
 
 
-  $('#startBtn').onclick = () => {
-    if (!state.session || state.session.state === 'stopped'){ startSession(); return; }
-    if (state.session.state === 'paused'){ resumeSession(); return; }
-    toggleManualWork(); // med sejo je glavna tipka DELA/STOJI
-  };
-  $('#pauseBtn').onclick = () => pauseSession();
-  $('#stopBtn').onclick = () => confirmStopSession();
+  wireMapButtons();
 
   initLightbar();
   $('#mapAbBtn').onclick = () => onAbButton();
@@ -921,6 +1197,29 @@ function renderDrawer(){
   $('#drawerToSettings').onclick = () => { closeDrawer(); showView('settings'); };
 }
 
+// Geometrija priključka: {width, latOff, backM, trailed}
+// extL/extR: doseg levo/desno od sredine traktorja; backM: delovni center za anteno.
+function machineGeometry(){
+  const m = state.session?.machine || allMachines().find(x => x.id === state.selectedMachineId);
+  if (!m) return { width: effectiveWidthM(), latOff: 0, backM: 0, trailed: false };
+  const hasExt = m.extL != null && m.extR != null && (m.extL || m.extR);
+  const width = state.settings.widthOverride
+    || (hasExt ? (m.extL + m.extR) : effectiveWidthM());
+  const latOff = hasExt ? (m.extL - m.extR) / 2 : 0;
+  return { width, latOff, backM: m.backM || 0, trailed: !!m.trailed };
+}
+
+let _implState = null; // lega vlečnega priključka (tractrix)
+
+function implementPos(fix, geo){
+  if (!geo.backM) return null;
+  if (geo.trailed){
+    _implState = trailedFollow(_implState, { lat: fix.lat, lng: fix.lng }, geo.backM);
+    return { ..._implState };
+  }
+  return offsetBack(fix, fix.headingDeg, geo.backM);
+}
+
 function effectiveWidthM(){
   if (state.settings.widthOverride) return state.settings.widthOverride;
   if (state.settings.useBleWidth && state.telemetry.width && state.telemetry.width > 0) return state.telemetry.width;
@@ -1015,6 +1314,7 @@ async function startSession(){
 
   // Prevoz: debelejša črta poti v barvi operacije; sicer tanka bela
   state.map.setDriveStyle(op.noPaint ? 2.8 : 1.6, op.noPaint ? op.color : '#ffffff');
+  _implState = null; // reset lege vlečnega priključka
   state.manualWork = true; // nova seja: privzeto "stroj dela"
   setTrackingUI('running');
   refreshTelemetryUI();
@@ -1099,6 +1399,21 @@ function setTrackingUI(status){
   }
 }
 
+function wireMapButtons(){
+  const start = $('#startBtn'), pause = $('#pauseBtn'), stop = $('#stopBtn');
+  pause.textContent = 'Pavza';
+  pause.className = 'bigbtn pauseb';
+  stop.textContent = 'Shrani';
+  stop.className = 'bigbtn stop';
+  start.onclick = () => {
+    if (!state.session || state.session.state === 'stopped'){ startSession(); return; }
+    if (state.session.state === 'paused'){ resumeSession(); return; }
+    toggleManualWork(); // med sejo je glavna tipka DELA/STOJI
+  };
+  pause.onclick = () => pauseSession();
+  stop.onclick = () => confirmStopSession();
+}
+
 // Glavna tipka med sejo: DELA/STOJI (ročno) oz. stanje iz stroja (BLE)
 function toggleManualWork(){
   if (state.settings.useBleMachineActive && state.telemetry.active != null){
@@ -1138,8 +1453,8 @@ function onFix(fix){
   if (fix.headingDeg != null) state.map.setVehicleHeading(fix.headingDeg);
   state.map.softFollow([fix.lat, fix.lng]);
 
-  // Auto-select parcele
-  if (state.settings.autoSelectParcel && !state.session){
+  // Auto-select parcele (ne med urejanjem seje)
+  if (state.settings.autoSelectParcel && !state.session && !_editS){
     const hit = state.parcels.find(p => pointInFeature({lat:fix.lat,lng:fix.lng}, p.feature));
     if (hit && hit.id !== state.selectedParcelId){
       state.selectedParcelId = hit.id;
@@ -1156,13 +1471,22 @@ function onFix(fix){
   // AB vodenje (lightbar)
   guidanceOnFix(fix);
 
+  // predpisna karta: ciljni odmerek cone
+  rxOnFix(fix);
+
   // Če seja teče, dodaj fix v track + morda nariši trak
   if (state.session && state.session.state === 'running'){
     const active = effectiveMachineActive();
     state.map.setVehicleActive(active || !state.session.operation.requiresActive);
-    const widthM = effectiveWidthM();
+    const geo = machineGeometry();
+    const widthM = geo.width;
     const flow = state.telemetry.flow ?? null;
-    const res = state.session.addFix(fix, active, widthM, flow);
+    const implPt = implementPos(fix, geo);
+    const res = state.session.addFix(fix, active, widthM, flow, implPt, geo.latOff, state.telemetry.fuelLh);
+    // obris priključka na karti (koristno predvsem z RTK)
+    if (fix.headingDeg != null && (geo.backM || geo.latOff || geo.width !== effectiveWidthM())){
+      state.map.setImplementRect(implPt || fix, fix.headingDeg, geo);
+    }
     // Tanka črta poti — vedno, tudi ko stroj ne dela (vidiš, kje si se samo vozil)
     if (res.moved && res.moveFrom){
       state.map.paintDrive(res.moveFrom, res.moveTo);
@@ -1262,7 +1586,7 @@ function refreshTelemetryUI(){
     state.map.setVehicleActive(active || !state.session.operation.requiresActive);
   }
   // Posodobi širino v label-u
-  $('#widthVal') && ($('#widthVal').textContent = fmtNum(effectiveWidthM(), 1));
+  $('#widthVal') && ($('#widthVal').textContent = fmtNum(machineGeometry().width, 1));
   // Drawer widths
   if (document.getElementById('drawerWidth')){
     document.getElementById('drawerWidth').textContent = fmtNum(effectiveWidthM(), 1) + ' m';
@@ -1272,6 +1596,10 @@ function refreshTelemetryUI(){
     $('#flowVal').textContent = fmtNum(state.telemetry.flow, 1);
   }
   refreshWorkButton();
+  const rpmEl = $('#rpmVal');
+  if (rpmEl) rpmEl.textContent = state.telemetry.rpm != null ? fmtNum(state.telemetry.rpm, 0) : '—';
+  const flh = $('#fuelLhVal');
+  if (flh) flh.textContent = state.telemetry.fuelLh != null ? fmtNum(state.telemetry.fuelLh, 1) + ' l/h' : '—';
   // Status stroja (sejalnica preko BLE): ALARM > DVIGNJEN > SEJE > MIRUJE
   const ms = $('#machineState');
   if (ms){
@@ -1393,19 +1721,44 @@ function renderMachinesList(){
   });
 }
 
+// Predogled geometrije: pogled od zgoraj — traktor + priključek
+function machinePreviewSvg(v){
+  const extL = +v.extL || 0, extR = +v.extR || 0, back = +v.backM || 0;
+  const w = Math.max(extL + extR, 2), span = Math.max(extL, extR, 2);
+  const sc = 120 / Math.max(span * 2, 4);          // px na meter
+  const cx = 150, cy0 = 34;
+  const iy = cy0 + 26 + back * sc * 0.55;
+  const x1 = cx - extR * sc, x2 = cx + extL * sc;  // levo od smeri = desno na ekranu gledano od zadaj? prikaz: levo stroja = levo na ekranu
+  return `<svg viewBox="0 0 300 ${Math.max(120, iy + 26)}" style="width:100%;background:var(--sunken);border-radius:8px">
+    <rect x="${cx-16}" y="${cy0-24}" width="32" height="44" rx="6" fill="none" stroke="#86efac" stroke-width="2"/>
+    <circle cx="${cx}" cy="${cy0-4}" r="3" fill="#f59e0b"/>
+    <line x1="${cx}" y1="${cy0+20}" x2="${cx}" y2="${iy-9}" stroke="#94a3b8" stroke-width="2" ${v.trailed ? 'stroke-dasharray="4,4"' : ''}/>
+    <rect x="${Math.min(x1,x2)}" y="${iy-9}" width="${Math.abs(x2-x1) || 4}" height="18" rx="4" fill="rgba(34,197,94,.25)" stroke="#22c55e" stroke-width="2"/>
+    <line x1="${cx}" y1="${cy0-30}" x2="${cx}" y2="${iy+18}" stroke="rgba(255,255,255,.25)" stroke-width="1" stroke-dasharray="2,4"/>
+    <text x="${x2+4}" y="${iy+4}" fill="#93a498" font-size="10">${(extL||0).toFixed(1)} m levo</text>
+    <text x="${x1-4}" y="${iy+4}" fill="#93a498" font-size="10" text-anchor="end">${(extR||0).toFixed(1)} m desno</text>
+    <text x="${cx+6}" y="${(cy0+iy)/2}" fill="#93a498" font-size="10">${(back||0).toFixed(1)} m nazaj${v.trailed ? ' (vlečen)' : ''}</text>
+  </svg>`;
+}
+
 async function editMachine(id){
   const mch = allMachines().find(x => x.id === id);
   if (!mch) return;
   const f = await appForm('Stroj: ' + mch.name, [
     { key: 'name', label: 'Ime', type: 'text', value: mch.name },
-    { key: 'width', label: 'Delovna širina (m)', type: 'number', step: '0.1', value: mch.width },
+    { key: 'width', label: 'Delovna širina (m) — če je stroj sredinski', type: 'number', step: '0.1', value: mch.width },
+    { key: 'extL', label: 'Doseg LEVO od sredine (m) — za asimetrične', type: 'number', step: '0.1', value: mch.extL ?? '' },
+    { key: 'extR', label: 'Doseg DESNO od sredine (m)', type: 'number', step: '0.1', value: mch.extR ?? '' },
+    { key: 'backM', label: 'Delovni center ZA anteno/traktorjem (m)', type: 'number', step: '0.1', value: mch.backM ?? '' },
+    { key: 'trailed', label: 'Vlečen (za traktorjem, ne fiksen na hidravliki)', type: 'check', value: !!mch.trailed },
     { key: 'cph', label: 'Lastna cena (€/h) — amortizacija, vzdrževanje', type: 'number', step: '0.5', value: mch.cph ?? '' },
     { key: 'lph', label: 'Poraba goriva (l/h)', type: 'number', step: '0.5', value: mch.lph ?? '' },
     { key: 'fuel', label: 'Cena goriva (€/l)', type: 'number', step: '0.01', value: mch.fuel ?? '' },
     { key: 'spha', label: 'Storitvena cena (€/ha) — kar bi zaračunal', type: 'number', step: '1', value: mch.spha ?? '' }
-  ]);
+  ], 'Shrani', machinePreviewSvg);
   if (!f) return;
   const patch = { name: f.name || mch.name, width: f.width || mch.width,
+                  extL: f.extL, extR: f.extR, backM: f.backM, trailed: f.trailed,
                   cph: f.cph, lph: f.lph, fuel: f.fuel, spha: f.spha };
   const customs = state.settings.customMachines || [];
   const ci = customs.findIndex(x => x.id === id);
@@ -1456,7 +1809,9 @@ async function showMachineStats(id){
   const h = ms / 3600000, effH = effMs / 3600000;
   const avgKmh = effH > 0.02 ? effKm / effH : 0;
   const haPerH = effH > 0.02 ? ha / effH : 0;
-  const cost = (mch.cph ? h * mch.cph : 0) + (mch.lph && mch.fuel ? h * mch.lph * mch.fuel : 0);
+  const realFuel = mine.reduce((acc, s) => acc + (s.fuelL || 0), 0);
+  const fuelL = realFuel > 0 ? realFuel : (mch.lph ? h * mch.lph : 0);
+  const cost = (mch.cph ? h * mch.cph : 0) + (fuelL && mch.fuel ? fuelL * mch.fuel : 0);
   const value = mch.spha ? ha * mch.spha : 0;
   const row = (l, v) => `<div class="rowline"><span class="small muted">${l}</span><strong>${v}</strong></div>`;
   const body = $('#modalBody');
@@ -1469,7 +1824,7 @@ async function showMachineStats(id){
     ${row('Prevoženo', fmtNum(km, 1) + ' km')}
     ${row('Povp. delovna hitrost', fmtNum(avgKmh, 1) + ' km/h')}
     ${row('Storilnost', fmtNum(haPerH, 2) + ' ha/h')}
-    ${mch.lph && mch.fuel ? row('Gorivo (ocena)', fmtNum(h * mch.lph, 0) + ' l = ' + fmtNum(h * mch.lph * mch.fuel, 0) + ' €') : ''}
+    ${fuelL ? row(realFuel > 0 ? 'Gorivo (CAN, realno)' : 'Gorivo (ocena)', fmtNum(fuelL, 0) + ' l' + (mch.fuel ? ' = ' + fmtNum(fuelL * mch.fuel, 0) + ' €' : '')) : ''}
     ${cost ? row('Lastni strošek (ocena)', fmtNum(cost, 0) + ' €') : ''}
     ${ha > 0 && cost ? row('Strošek na ha', fmtNum(cost / ha, 1) + ' €/ha') : ''}
     ${value ? row('Storitvena vrednost', fmtNum(value, 0) + ' €') : ''}
@@ -1570,11 +1925,15 @@ async function openSessionDetail(id){
     </div>
     ${s.note ? `<div class="card" style="margin-top:10px"><div class="small muted">Opomba</div><div style="margin-top:4px">${escapeHtml(s.note)}</div></div>` : ''}
     <div class="btn-row" style="margin-top:12px">
+      <button class="minibtn" id="modalShowBtn">Prikaži na karti</button>
+      <button class="minibtn" id="modalEditBtn">Uredi (briši trakove)</button>
       <button class="minibtn" id="modalExportBtn">Izvozi GeoJSON</button>
       <button class="minibtn danger" id="modalDeleteBtn">Izbriši sejo</button>
     </div>
   `;
   $('#modalScrim').classList.add('open');
+  $('#modalShowBtn').onclick = () => openSessionOnMap(s.id, false);
+  $('#modalEditBtn').onclick = () => openSessionOnMap(s.id, true);
   $('#modalExportBtn').onclick = () => exportSessionAsGeoJSON(s);
   $('#modalDeleteBtn').onclick = async () => {
     if (!await appConfirm('Izbrišem sejo? Tega ni mogoče razveljaviti.', { okLabel: 'Izbriši', danger: true })) return;
@@ -1827,6 +2186,22 @@ function wireSettingsView(){
   };
   $('#settingsExportAllBtn').onclick = () => exportAllSessionsAsGeoJSON();
   $('#settingsAddOpBtn').onclick = () => addCustomOp();
+  $('#settingsImportLayerBtn').onclick = () => $('#fileImportLayer').click();
+  $('#fileImportLayer').addEventListener('change', async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    try {
+      const layer = await importLayerFile(f);
+      if (layer){
+        state.settings.activeLayerId = layer.id;
+        await persistSettings();
+        activateLayer(layer.id);
+        renderLayersList();
+        toast('Sloj uvožen: ' + layer.name);
+      }
+    } catch (err){ appInfo('Uvoz sloja ni uspel: ' + (err.message || err), 'Napaka'); }
+    e.target.value = '';
+  });
   $('#settingsAddMachineBtn').onclick = () => addCustomMachine();
   $('#settingsExportCsvBtn').onclick = () => exportSessionsCSV();
 
@@ -1907,6 +2282,7 @@ async function renderSettings(){
 
   renderOpsList();
   renderMachinesList();
+  renderLayersList();
 
   const ua = navigator.userAgent;
   $('#settingsBrowser').textContent = ua.length > 80 ? ua.slice(0, 80) + '…' : ua;

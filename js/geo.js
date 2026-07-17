@@ -25,8 +25,9 @@ export function bearing(a, b){
 }
 
 // Izračuna 4 vogale traka širine widthM med točkama from -> to.
-// Vrne polje [[lat,lng], ...] ali null, če je segment prekratek.
-export function createStrip(from, to, widthM){
+// latOffM: bočni zamik sredine traku (+ = levo od smeri vožnje) za
+// asimetrične stroje (čelna+bočna kosilnica ipd.). Vrne [[lat,lng],...] ali null.
+export function createStrip(from, to, widthM, latOffM = 0){
   const lat1 = from.lat, lng1 = from.lng;
   const lat2 = to.lat,   lng2 = to.lng;
   const avgLat = (lat1 + lat2) / 2;
@@ -34,16 +35,40 @@ export function createStrip(from, to, widthM){
   const dy = (lat2 - lat1) * 111320;
   const len = Math.sqrt(dx*dx + dy*dy);
   if (len < 0.15) return null;
-  const px = -dy / len, py = dx / len;
-  const half = widthM / 2;
-  const offLng = metersToDegreesLng(px * half, avgLat);
-  const offLat = metersToDegreesLat(py * half);
+  const px = -dy / len, py = dx / len;          // enotska normala, kaže levo
+  const oL = latOffM + widthM / 2;              // levi rob
+  const oR = latOffM - widthM / 2;              // desni rob
+  const lngL = metersToDegreesLng(px * oL, avgLat), latL = metersToDegreesLat(py * oL);
+  const lngR = metersToDegreesLng(px * oR, avgLat), latR = metersToDegreesLat(py * oR);
   return [
-    [lat1 + offLat, lng1 + offLng],
-    [lat1 - offLat, lng1 - offLng],
-    [lat2 - offLat, lng2 - offLng],
-    [lat2 + offLat, lng2 + offLng]
+    [lat1 + latL, lng1 + lngL],
+    [lat1 + latR, lng1 + lngR],
+    [lat2 + latR, lng2 + lngR],
+    [lat2 + latL, lng2 + lngL]
   ];
+}
+
+// Premakni točko za backM metrov NAZAJ glede na smer headingDeg (0=N).
+export function offsetBack(pt, headingDeg, backM){
+  if (!backM || headingDeg == null) return { lat: pt.lat, lng: pt.lng };
+  const r = headingDeg * Math.PI / 180;
+  return {
+    lat: pt.lat - Math.cos(r) * backM / 111320,
+    lng: pt.lng - Math.sin(r) * backM / (111320 * Math.cos(pt.lat * Math.PI / 180))
+  };
+}
+
+// Vlečen priključek (tractrix): delovna točka sledi vlečni točki na razdalji backM.
+// state: {lat,lng} prejšnje lege ali null. Vrne novo lego.
+export function trailedFollow(state, hitch, backM){
+  if (!state) return { lat: hitch.lat, lng: hitch.lng };
+  const kx = 111320 * Math.cos(hitch.lat * Math.PI / 180);
+  let dx = (state.lng - hitch.lng) * kx;
+  let dy = (state.lat - hitch.lat) * 111320;
+  const d = Math.hypot(dx, dy);
+  if (d < 0.01) return { ...state };
+  dx = dx / d * backM; dy = dy / d * backM;
+  return { lat: hitch.lat + dy / 111320, lng: hitch.lng + dx / kx };
 }
 
 // Ploščina poligona v m² (shoelace na ravni približek)

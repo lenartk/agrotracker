@@ -32,6 +32,7 @@ export class Session {
     this.distanceM = 0;
     this.activeDistanceM = 0;     // razdalja, ko je stroj aktiven (requiresActive)
     this.flowTotal = null;        // opcijski seštevek pretoka
+    this.fuelL = null;            // porabljeno gorivo (iz CAN fuelLh), litri
     this.passes = 0;
 
     this._lastPaintPos = null;
@@ -79,7 +80,8 @@ export class Session {
   // machineActive: boolean (iz BLE ali privzeto true)
   // widthM: trenutna širina (lahko prihaja iz BLE-ja)
   // flow: opcijsko (trenutni pretok)
-  addFix(fix, machineActive, widthM, flow){
+  // implPt: lega delovnega centra priključka (geometrija stroja); latOffM: bočni zamik traku
+  addFix(fix, machineActive, widthM, flow, implPt = null, latOffM = 0, fuelLh = null){
     const now = fix.tsMs || Date.now();
     const point = {
       t: now, lat: fix.lat, lng: fix.lng,
@@ -99,6 +101,14 @@ export class Session {
       if (prev.active && point.active) this.activeDistanceM += d;
     }
 
+    if (fuelLh != null && prev){
+      const dtH = (now - prev.t) / 3600000;
+      if (dtH > 0 && dtH < 0.01){
+        if (this.fuelL == null) this.fuelL = 0;
+        this.fuelL += fuelLh * dtH;
+      }
+    }
+
     if (this.track.length >= DEFAULTS.historyTrackMax){
       this.track.shift(); // cirkularno — ne eksplodiraj
     }
@@ -115,15 +125,22 @@ export class Session {
     if (doPaint){
       const sinceLast = now - this._lastPaintAt;
       const movedFromPaint = this._lastPaintPos
-        ? haversine(this._lastPaintPos, point)
+        ? haversine(this._lastPaintPos, implPt || point)
         : Infinity;
       if (sinceLast >= DEFAULTS.paintSampleMinMs || movedFromPaint >= 1.0){
-        paintFrom = this._lastPaintPos || { lat: prev.lat, lng: prev.lng };
-        stripCoords = createStrip(paintFrom, point, widthM);
+        const paintPt = implPt || point;
+        if (!this._lastPaintPos){
+          // prvi vzorec: samo zasejemo izhodišče (v prostoru priključka)
+          this._lastPaintPos = { lat: paintPt.lat, lng: paintPt.lng };
+          this._lastPaintAt = now;
+        }
+        paintFrom = this._lastPaintPos;
+        stripCoords = createStrip(paintFrom, paintPt, widthM, latOffM);
         if (stripCoords){
           this.strips.push(stripCoords);
-          const segDx = (point.lng - paintFrom.lng) * 111320 * Math.cos(paintFrom.lat * Math.PI/180);
-          const segDy = (point.lat - paintFrom.lat) * 111320;
+          const pp2 = implPt || point;
+          const segDx = (pp2.lng - paintFrom.lng) * 111320 * Math.cos(paintFrom.lat * Math.PI/180);
+          const segDy = (pp2.lat - paintFrom.lat) * 111320;
           segM = Math.sqrt(segDx*segDx + segDy*segDy);
           this.coveredHa += (segM * widthM) / 10000;
           this.passes += 1;
@@ -135,7 +152,8 @@ export class Session {
             this.flowTotal += flow * dtS;
           }
           this._lastPaintAt = now;
-          this._lastPaintPos = { lat: point.lat, lng: point.lng };
+          const pp = implPt || point;
+          this._lastPaintPos = { lat: pp.lat, lng: pp.lng };
           painted = true;
         } else {
           paintFrom = null;
@@ -143,7 +161,7 @@ export class Session {
       }
     }
     return { painted, segmentM: segM, stripCoords, paintFrom,
-             paintTo: painted ? { lat: point.lat, lng: point.lng } : null,
+             paintTo: painted ? { ...( implPt || point ) } : null,
              moved: true,
              moveFrom: prev ? { lat: prev.lat, lng: prev.lng } : null,
              moveTo: { lat: point.lat, lng: point.lng } };
@@ -183,6 +201,7 @@ export class Session {
       activeDistanceM: this.activeDistanceM,
       durationMs: this.activeMsAccum,
       flowTotal: this.flowTotal,
+      fuelL: this.fuelL,
       passes: this.passes
     };
   }

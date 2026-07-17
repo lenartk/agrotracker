@@ -6,7 +6,7 @@
 // Vse async, vrne Promise-e. Ni dependency-ja na Dexie ipd.
 
 const DB_NAME = 'agrotracker';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 let _dbPromise = null;
 
 function openDB(){
@@ -29,6 +29,9 @@ function openDB(){
       }
       if (!db.objectStoreNames.contains('gerklib')){
         db.createObjectStore('gerklib', { keyPath: 'k' });
+      }
+      if (!db.objectStoreNames.contains('layers')){
+        db.createObjectStore('layers', { keyPath: 'id' });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -120,6 +123,23 @@ export async function getGerkLib(){
 export async function clearGerkLib(){
   const store = await tx('gerklib', 'readwrite');
   return promisify(store.clear());
+}
+
+// ============ SLOJI (analize prsti, predpisne karte ...) ============
+
+export async function savedLayers(){
+  const store = await tx('layers');
+  return promisify(store.getAll());
+}
+
+export async function saveLayer(layer){
+  const store = await tx('layers', 'readwrite');
+  return promisify(store.put(layer));
+}
+
+export async function deleteLayer(id){
+  const store = await tx('layers', 'readwrite');
+  return promisify(store.delete(id));
 }
 
 // ============ UTIL ============
