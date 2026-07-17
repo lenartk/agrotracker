@@ -378,3 +378,5 @@ input:focus,select:focus{border-color:var(--accent)}
 .map-actions .bigbtn{height:56px;box-shadow:0 4px 14px rgba(0,0,0,.45)}
 .bigbtn.work-on{background:var(--accent-strong);border-color:#1d7f3f}
 .bigbtn.work-off{background:#374151;border-color:#4b5563}
+
+.lp-hint{text-transform:none;letter-spacing:0;font-weight:600;opacity:.65}

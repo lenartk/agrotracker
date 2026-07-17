@@ -4,7 +4,7 @@
 //   - Zemljevid tile-i — network-first z dolgotrajnim cache-om (za parcele, ki si jih že obiskal)
 //   - Vse ostalo — cache-first z network fallback-om
 
-const APP_CACHE = 'agrotracker-app-v17';
+const APP_CACHE = 'agrotracker-app-v18';
 const TILE_CACHE = 'agrotracker-tiles-v1';
 
 const SHELL = [

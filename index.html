@@ -55,24 +55,24 @@
       </div>
       <div style="flex:1">
         <div class="home-title">AGRO<em>TRACKER</em></div>
-        <div class="home-sub">GPS vodenje · sledenje · evidenca — v5.1</div>
+        <div class="home-sub">GPS vodenje · sledenje · evidenca — v5.2</div>
       </div>
       <button class="iconbtn circle" id="homeHistoryBtn" title="Zgodovina"><svg class="icon"><use href="#i-folder"/></svg></button>
       <button class="iconbtn circle" id="homeSettingsBtn" title="Nastavitve"><svg class="icon"><use href="#i-sliders"/></svg></button>
     </div>
 
     <div class="section">
-      <div class="section-label">Tip dela</div>
-      <div class="op-grid" id="opGrid"></div>
-    </div>
-
-    <div class="section">
-      <div class="section-label">Stroj</div>
+      <div class="section-label">Stroj <span class="lp-hint">(dolg pritisk = nastavitve)</span></div>
       <div class="picker-row" id="machineRow"></div>
     </div>
 
     <div class="section">
-      <div class="section-label">Parcela</div>
+      <div class="section-label">Tip dela <span class="lp-hint">(dolg pritisk = nastavitve)</span></div>
+      <div class="op-grid" id="opGrid"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Parcela <span class="lp-hint">(dolg pritisk = pokaži na karti)</span></div>
       <div class="picker-row" id="parcelRow"></div>
     </div>
 
@@ -328,7 +328,7 @@
     <div class="card">
       <h3>O aplikaciji</h3>
       <div class="note">
-        AgroTracker v5.1 — GPS vodenje (AB linije + lightbar), 2D/3D karta s terenom, sledenje obdelanim površinam in GERK evidenca opravil.<br>
+        AgroTracker v5.2 — GPS vodenje (AB linije + lightbar), 2D/3D karta s terenom, sledenje obdelanim površinam in GERK evidenca opravil.<br>
         Povezava z ESP32 modulom preko Web Bluetooth.<br><br>
         <strong>Brskalnik:</strong> <span id="settingsBrowser" class="small muted"></span><br>
         <strong>Nameščeno:</strong> <span id="settingsCacheVer" class="small muted">—</span>

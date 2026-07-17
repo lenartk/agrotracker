@@ -100,6 +100,12 @@ function appForm(title, fields, okLabel = 'Shrani', preview = null){
       if (f.type === 'check'){
         return `<label class="toggle"><span>${f.label}</span><input type="checkbox" id="${id}" ${f.value ? 'checked' : ''}></label>`;
       }
+      if (f.type === 'select'){
+        const opts = (f.options || []).map(o =>
+          `<option value="${o.v}" ${String(o.v) === String(f.value) ? 'selected' : ''}>${o.l}</option>`).join('');
+        return `<div class="rowline tall" style="margin-bottom:4px"><span>${f.label}</span></div>
+          <select id="${id}" style="margin-bottom:8px">${opts}</select>`;
+      }
       const val = f.value != null ? String(f.value).replace(/"/g, '&quot;') : '';
       return `<div class="rowline tall" style="margin-bottom:4px"><span>${f.label}</span></div>
         <input type="${f.type || 'text'}" id="${id}" value="${val}" ${f.step ? `step="${f.step}"` : ''} style="margin-bottom:8px">`;
@@ -139,6 +145,7 @@ function appForm(title, fields, okLabel = 'Shrani', preview = null){
       for (const f of fields){
         const el = document.getElementById('ff_' + f.key);
         if (f.type === 'check') out[f.key] = el.checked;
+        else if (f.type === 'select') out[f.key] = el.value;
         else if (f.type === 'number'){
           const v = parseFloat(el.value.replace(',', '.'));
           out[f.key] = isFinite(v) ? v : null;
@@ -156,7 +163,11 @@ const OP_COLORS = ['#38bdf8', '#f472b6', '#fb923c', '#a3e635', '#c084fc', '#2dd4
 
 // Operacije in stroji: vgrajeni + uporabniški (nastavitve)
 function allOperations(){
-  const merged = { ...OPERATIONS };
+  const ovr = state.settings.opParams || {};
+  const merged = {};
+  for (const [k, op] of Object.entries(OPERATIONS)){
+    merged[k] = ovr[k] ? { ...op, ...ovr[k] } : op;
+  }
   for (const o of (state.settings.customOps || [])){
     merged[o.id] = {
       id: o.id, name: o.name, icon: '', svg: 'wrench',
@@ -174,6 +185,25 @@ function allMachines(){
   const base = MACHINES.map(mch => ({ ...mch, ...(ovr[mch.id] || {}) }));
   const custom = (state.settings.customMachines || []).map(mch => ({ svg: 'wrench', ...mch }));
   return base.concat(custom);
+}
+
+// Dolg pritisk (550 ms) — odpre nastavitve/predogled; kratek klik ostane izbira
+function bindLongPress(el, fn){
+  let t = null, sx = 0, sy = 0, fired = false;
+  el.addEventListener('pointerdown', (e) => {
+    fired = false; sx = e.clientX; sy = e.clientY;
+    t = setTimeout(() => { fired = true; navigator.vibrate?.(30); fn(); }, 550);
+  });
+  const cancel = () => { if (t){ clearTimeout(t); t = null; } };
+  el.addEventListener('pointermove', (e) => {
+    if (Math.hypot(e.clientX - sx, e.clientY - sy) > 12) cancel();
+  });
+  el.addEventListener('pointerup', cancel);
+  el.addEventListener('pointerleave', cancel);
+  el.addEventListener('click', (e) => {
+    if (fired){ e.stopImmediatePropagation(); e.preventDefault(); }
+  }, true);
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
 const opSvg = (opId) => allOperations()[opId]?.svg || 'wrench';
@@ -926,6 +956,7 @@ function renderHome(){
   `).join('');
   opGrid.querySelectorAll('.op-card').forEach(btn => {
     btn.onclick = () => { state.selectedOpId = btn.dataset.id; autoPickMachineForOp(); renderHome(); };
+    bindLongPress(btn, () => editOperation(btn.dataset.id));
   });
 
   // Stroji
@@ -937,7 +968,14 @@ function renderHome(){
     </button>
   `).join('');
   machRow.querySelectorAll('.picker-chip').forEach(btn => {
-    btn.onclick = () => { state.selectedMachineId = btn.dataset.id; renderHome(); };
+    btn.onclick = () => {
+      state.selectedMachineId = btn.dataset.id;
+      // stroj s sabo prinese privzeti tip dela (lahko ga potem ročno zamenjaš)
+      const dm = allMachines().find(x => x.id === btn.dataset.id);
+      if (dm?.defaultOp && allOperations()[dm.defaultOp]) state.selectedOpId = dm.defaultOp;
+      renderHome();
+    };
+    bindLongPress(btn, () => editMachine(btn.dataset.id));
   });
 
   // Parcele
@@ -953,6 +991,7 @@ function renderHome(){
     `).join('');
     parcelRow.querySelectorAll('.picker-chip').forEach(btn => {
       btn.onclick = () => { state.selectedParcelId = btn.dataset.id; renderHome(); };
+      bindLongPress(btn, () => showParcelOnMap(btn.dataset.id));
     });
   }
 
@@ -1861,6 +1900,47 @@ function renderOpsList(){
   });
 }
 
+async function editOperation(id){
+  const op = allOperations()[id];
+  if (!op) return;
+  const f = await appForm('Operacija: ' + op.name, [
+    { key: 'name', label: 'Ime', type: 'text', value: op.name },
+    { key: 'valueUnit', label: 'Enota vrednosti (npr. kg/ha)', type: 'text', value: op.valueUnit || '' },
+    { key: 'requiresActive', label: 'Barvaj samo, ko stroj javi "aktiven" (BLE)', type: 'check', value: !!op.requiresActive },
+    { key: 'noPaint', label: 'Samo pot (brez barvanja)', type: 'check', value: !!op.noPaint }
+  ]);
+  if (!f) return;
+  const custom = (state.settings.customOps || []).find(o => o.id === id);
+  if (custom){
+    custom.name = f.name || custom.name;
+    custom.unit = f.valueUnit;
+    custom.requiresActive = f.requiresActive;
+    custom.noPaint = f.noPaint;
+  } else {
+    state.settings.opParams = state.settings.opParams || {};
+    state.settings.opParams[id] = {
+      name: f.name || op.name, valueUnit: f.valueUnit, valueLabel: f.name || op.name,
+      requiresActive: f.requiresActive, noPaint: f.noPaint
+    };
+  }
+  await persistSettings();
+  renderHome();
+  toast('Shranjeno: ' + (f.name || op.name));
+}
+
+function showParcelOnMap(id){
+  const p = state.parcels.find(x => x.id === id);
+  if (!p) return;
+  state.selectedParcelId = id;
+  ensureMap();
+  showView('map');
+  state.map.setFollow(false);
+  state.map.highlightParcel(id);
+  state.map.fitToParcel(id);
+  $('#mapParcelName').textContent = p.name;
+  $('#mapMachineName').textContent = fmtNum(p.ha, 2) + ' ha' + (p.gerkPid ? ' · GERK ' + p.gerkPid : '');
+}
+
 async function addCustomOp(){
   const f = await appForm('Nova operacija', [
     { key: 'name', label: 'Ime (npr. Mulčenje)', type: 'text', value: '' },
@@ -1921,8 +2001,12 @@ function machinePreviewSvg(v){
 async function editMachine(id){
   const mch = allMachines().find(x => x.id === id);
   if (!mch) return;
+  const opOptions = [{ v: '', l: '— brez —' }].concat(
+    Object.values(allOperations()).map(o => ({ v: o.id, l: o.name })));
   const f = await appForm('Stroj: ' + mch.name, [
     { key: 'name', label: 'Ime', type: 'text', value: mch.name },
+    { key: 'defaultOp', label: 'Privzeti tip dela (ob izbiri stroja)', type: 'select',
+      options: opOptions, value: mch.defaultOp || '' },
     { key: 'width', label: 'Delovna širina (m) — če je stroj sredinski', type: 'number', step: '0.1', value: mch.width },
     { key: 'extL', label: 'Doseg LEVO od sredine (m) — za asimetrične', type: 'number', step: '0.1', value: mch.extL ?? '' },
     { key: 'extR', label: 'Doseg DESNO od sredine (m)', type: 'number', step: '0.1', value: mch.extR ?? '' },
@@ -1935,6 +2019,7 @@ async function editMachine(id){
   ], 'Shrani', machinePreviewSvg);
   if (!f) return;
   const patch = { name: f.name || mch.name, width: f.width || mch.width,
+                  defaultOp: f.defaultOp || null,
                   extL: f.extL, extR: f.extR, backM: f.backM, trailed: f.trailed,
                   cph: f.cph, lph: f.lph, fuel: f.fuel, spha: f.spha };
   const customs = state.settings.customMachines || [];

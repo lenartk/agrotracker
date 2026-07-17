@@ -101,13 +101,13 @@ export const OPERATIONS = {
 
 // Privzeti stroji (uporabnik jih lahko razširi v nastavitvah, v tej fazi so fiksni)
 export const MACHINES = [
-  { id: 'sejalnica',   name: 'Sejalnica',    width: 3.0,  icon: '🌱', svg: 'sprout', tag: 'setev' },
-  { id: 'cisterna',    name: 'Cisterna',     width: 10.0, icon: '💧', svg: 'droplet', tag: 'gnojevka' },
-  { id: 'trosilec',    name: 'Trosilec',     width: 12.0, icon: '🌾', svg: 'scatter', tag: 'gnojilo' },
-  { id: 'skropilnica', name: 'Škropilnica',  width: 15.0, icon: '💨', svg: 'wind', tag: 'škropljenje' },
-  { id: 'kosilnica',   name: 'Kosilnica',    width: 2.4,  icon: '✂️', svg: 'scissors', tag: 'košnja' },
-  { id: 'nakladalna',  name: 'Nakladalna',   width: 2.8,  icon: '🚜', svg: 'wheat', tag: 'spravilo' },
-  { id: 'kombajn',     name: 'Kombajn',      width: 4.5,  icon: '🌽', tag: 'žetev' }
+  { id: 'sejalnica',   name: 'Sejalnica',    width: 3.0,  icon: '🌱', svg: 'sprout', tag: 'setev', defaultOp: 'seed' },
+  { id: 'cisterna',    name: 'Cisterna',     width: 10.0, icon: '💧', svg: 'droplet', tag: 'gnojevka', defaultOp: 'fertilize_liquid' },
+  { id: 'trosilec',    name: 'Trosilec',     width: 12.0, icon: '🌾', svg: 'scatter', tag: 'gnojilo', defaultOp: 'fertilize_solid' },
+  { id: 'skropilnica', name: 'Škropilnica',  width: 15.0, icon: '💨', svg: 'wind', tag: 'škropljenje', defaultOp: 'spray' },
+  { id: 'kosilnica',   name: 'Kosilnica',    width: 2.4,  icon: '✂️', svg: 'scissors', tag: 'košnja', defaultOp: 'mow' },
+  { id: 'nakladalna',  name: 'Nakladalna',   width: 2.8,  icon: '🚜', svg: 'wheat', tag: 'spravilo', defaultOp: 'harvest' },
+  { id: 'kombajn',     name: 'Kombajn',      width: 4.5,  icon: '🌽', tag: 'žetev', defaultOp: 'harvest' }
 ];
 
 // BLE UUIDs za ESP32 modul — morata se ujemati s firmware-om.

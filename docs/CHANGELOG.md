@@ -6,6 +6,24 @@ Format: [verzija] - YYYY-MM-DD
 
 ---
 
+## [v5.2] - 2026-07-17
+
+### Spremenjeno — izbira dela in dolg pritisk
+
+- **Stroj je zdaj primaren** (sekcija pred Tip dela): ob izbiri stroja se
+  samodejno nastavi njegov privzeti tip dela (sejalnica → setev, kosilnica →
+  košnja ...). Tip dela lahko potem ročno zamenjaš (npr. sejalnica + česanje).
+- Privzeti tip dela stroja se nastavi v uredniku stroja (spustni seznam).
+- **Dolg pritisk**: na Tip dela → uredi operacijo; na Stroj → nastavitve stroja;
+  na Parcelo → pokaži parcelo na karti.
+
+### Tehnično
+
+- `bindLongPress` (550 ms), `opParams` overrides za vgrajene operacije,
+  `machine.defaultOp`; `APP_CACHE` v18
+
+---
+
 ## [v5.1] - 2026-07-17
 
 ### Dodano — lokacijski izvozi količin (za druge programe)
