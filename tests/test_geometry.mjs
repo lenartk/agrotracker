@@ -29,4 +29,10 @@ st = trailedFollow(st, B, 4); // hitch se premakne 10 m naprej
 const d = Math.hypot((st.lat - B.lat) * 111320, (st.lng - B.lng) * kx);
 assert.ok(Math.abs(d - 4) < 0.05, `tractrix razdalja ${d}`);
 
+// bočna korekcija pivota (implementPos): antena 1 m LEVO od osi pri vožnji na
+// sever → os je 1 m vzhodno; offsetBack(pt, heading+90, -antLat) mora dati +1 m E
+const lp = offsetBack(B, 0 + 90, -1);
+assert.ok(Math.abs((lp.lng - B.lng) * kx - 1) < 0.02, `pivot lat korekcija ${(lp.lng - B.lng) * kx}`);
+assert.ok(Math.abs((lp.lat - B.lat) * 111320) < 0.01, 'pivot korekcija ne sme premakniti naprej/nazaj');
+
 console.log('test_geometry.mjs: vsi testi OK');

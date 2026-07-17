@@ -1413,26 +1413,32 @@ function renderDrawer(){
   $('#drawerToSettings').onclick = () => { closeDrawer(); showView('settings'); };
 }
 
-// Geometrija priključka: {width, latOff, backM, trailed}
-// extL/extR: doseg levo/desno od sredine traktorja; backM: delovni center za anteno.
+// Geometrija priključka: {width, latOff, backM, trailed, hitchM, antLat}
+// extL/extR: doseg levo/desno od sredine stroja; backM: delovni center za anteno;
+// hitchM: antena pred priklopno točko (pivot); antLat: antena bočno od osi (+ = levo).
 function machineGeometry(){
   const m = state.session?.machine || allMachines().find(x => x.id === state.selectedMachineId);
-  if (!m) return { width: effectiveWidthM(), latOff: 0, backM: 0, trailed: false };
+  if (!m) return { width: effectiveWidthM(), latOff: 0, backM: 0, trailed: false, hitchM: 0, antLat: 0 };
   const hasExt = m.extL != null && m.extR != null && (m.extL || m.extR);
   const width = state.settings.widthOverride
     || (hasExt ? (m.extL + m.extR) : effectiveWidthM());
-  const latOff = hasExt ? (m.extL - m.extR) / 2 : 0;
-  return { width, latOff, backM: m.backM || 0, trailed: !!m.trailed };
+  const antLat = m.antLat || 0, trailed = !!m.trailed;
+  // latOff = sredina traku glede na pot barvanja: nošen rel. antene, vlečen rel. pivota (ta je že na osi)
+  const latOff = (hasExt ? (m.extL - m.extR) / 2 : 0) - (trailed ? 0 : antLat);
+  return { width, latOff, backM: m.backM || 0, trailed, hitchM: m.hitchM || 0, antLat };
 }
 
 let _implState = null; // lega vlečnega priključka (tractrix)
 
 function implementPos(fix, geo){
-  if (!geo.backM) return null;
   if (geo.trailed){
-    _implState = trailedFollow(_implState, { lat: fix.lat, lng: fix.lng }, geo.backM);
+    // pivot togo za anteno (in nazaj na os, če je antena bočno), delovna točka tractrix za pivotom
+    let pivot = offsetBack(fix, fix.headingDeg, geo.hitchM);
+    if (geo.antLat && fix.headingDeg != null) pivot = offsetBack(pivot, fix.headingDeg + 90, -geo.antLat);
+    _implState = trailedFollow(_implState, pivot, Math.max(geo.backM - geo.hitchM, 0.3));
     return { ..._implState };
   }
+  if (!geo.backM) return null;
   return offsetBack(fix, fix.headingDeg, geo.backM);
 }
 
@@ -1980,18 +1986,23 @@ function renderMachinesList(){
 
 // Predogled geometrije: pogled od zgoraj, smer vožnje navzgor — levo stroja = levo na ekranu.
 // Prazna extL/extR = simetričen stroj, nariše width. Sprejme surove vnose (vejica!).
-function machinePreviewSvg(v){
+// meta (opcijsko): vanj zapiše koordinate za vlečni urejevalnik (openGeoEditor).
+function machinePreviewSvg(v, meta){
   const num = x => { const f = parseFloat(String(x ?? '').replace(',', '.')); return isFinite(f) ? f : 0; };
   const extL = num(v.extL), extR = num(v.extR), back = num(v.backM), width = num(v.width);
+  const antLat = num(v.antLat), hitch = num(v.hitchM);
   const sym = !extL && !extR;
   const hL = sym ? width / 2 : extL, hR = sym ? width / 2 : extR;   // m levo/desno od osi
-  const W = 320, cx = W / 2, sc = 118 / Math.max(hL, hR, 1.8);      // px na meter
-  const ty = 16, ay = ty + 39;                                      // vrh traktorja, antena na zadnji osi
-  const iy = ay + 9 + Math.min(Math.max(14 + back * sc, 16), 92);   // y delovnega centra
+  const W = 320, cx = W / 2, sc = 118 / Math.max(hL, hR, Math.abs(antLat), 1.8); // px na meter
+  const ty = 16, hy = ty + 52;                                      // vrh traktorja, priklopna točka
+  const gx = cx - antLat * sc;                                      // antena: + = levo = levo na ekranu
+  const gy = Math.max(hy - hitch * sc, 10);
+  const iy = hy + Math.min(Math.max((back - hitch) * sc, 12), 110); // y delovnega centra
   const x1 = cx - hL * sc, x2 = cx + hR * sc, dy = iy + 20, xc = (x1 + x2) / 2;
   const noImpl = hL + hR <= 0;
-  const H = Math.max(noImpl ? ay + 42 : dy + 12, 118);
+  const H = Math.max(noImpl ? hy + 40 : dy + 12, 118);
   const G = '#22c55e', M = '#93a498', A = '#f59e0b';
+  if (meta) Object.assign(meta, { W, H, sc, cx, hy, gx, gy, iy, x1, x2 });
   const dim = (a, b, y, txt) => `
     <line x1="${a}" y1="${y}" x2="${b}" y2="${y}" stroke="${M}" stroke-width="1"/>
     <line x1="${a}" y1="${y-4}" x2="${a}" y2="${y+4}" stroke="${M}" stroke-width="1"/>
@@ -2001,13 +2012,13 @@ function machinePreviewSvg(v){
   const step = hL + hR > 14 ? 2 : 1;
   for (let m = step; !noImpl && m < hL + hR - 0.01; m += step)
     ticks += `<line x1="${x1 + m*sc}" y1="${iy-8}" x2="${x1 + m*sc}" y2="${iy+8}" stroke="rgba(34,197,94,.35)" stroke-width="1"/>`;
-  const hitch = v.trailed
-    ? `<line x1="${cx}" y1="${ay+9}" x2="${cx}" y2="${iy-8}" stroke="#94a3b8" stroke-width="2" stroke-dasharray="4,4"/>
-       <circle cx="${cx}" cy="${ay+14}" r="2.5" fill="#94a3b8"/>`
-    : `<line x1="${cx-8}" y1="${ay+9}" x2="${cx-4}" y2="${iy-8}" stroke="#94a3b8" stroke-width="2"/>
-       <line x1="${cx+8}" y1="${ay+9}" x2="${cx+4}" y2="${iy-8}" stroke="#94a3b8" stroke-width="2"/>`;
+  const link = v.trailed
+    ? `<line x1="${cx}" y1="${hy}" x2="${xc}" y2="${iy-8}" stroke="#94a3b8" stroke-width="2" stroke-dasharray="4,4"/>
+       <circle cx="${cx}" cy="${hy}" r="3" fill="#94a3b8"/>`
+    : `<line x1="${cx-8}" y1="${hy-3}" x2="${cx-4}" y2="${iy-8}" stroke="#94a3b8" stroke-width="2"/>
+       <line x1="${cx+8}" y1="${hy-3}" x2="${cx+4}" y2="${iy-8}" stroke="#94a3b8" stroke-width="2"/>`;
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;background:var(--sunken);border-radius:8px">
-    <line x1="${cx}" y1="6" x2="${cx}" y2="${(noImpl ? ay + 22 : iy) + 12}" stroke="rgba(255,255,255,.22)" stroke-width="1" stroke-dasharray="2,4"/>
+    <line x1="${cx}" y1="6" x2="${cx}" y2="${(noImpl ? hy + 20 : iy) + 12}" stroke="rgba(255,255,255,.22)" stroke-width="1" stroke-dasharray="2,4"/>
     <path d="M ${cx-4} 12 L ${cx} 5 L ${cx+4} 12" fill="none" stroke="${M}" stroke-width="1.5"/>
     <rect x="${cx-19}" y="${ty+3}" width="5" height="12" rx="2" fill="#475569"/>
     <rect x="${cx+14}" y="${ty+3}" width="5" height="12" rx="2" fill="#475569"/>
@@ -2015,16 +2026,89 @@ function machinePreviewSvg(v){
     <rect x="${cx+15}" y="${ty+29}" width="8" height="19" rx="3" fill="#475569"/>
     <rect x="${cx-11}" y="${ty}" width="22" height="22" rx="5" fill="rgba(134,239,172,.10)" stroke="#86efac" stroke-width="1.5"/>
     <rect x="${cx-14}" y="${ty+20}" width="28" height="28" rx="4" fill="rgba(134,239,172,.16)" stroke="#86efac" stroke-width="1.5"/>
-    <circle cx="${cx}" cy="${ay}" r="3.5" fill="${A}" stroke="rgba(0,0,0,.4)" stroke-width="1"/>
-    <text x="${cx+7}" y="${ay+3}" fill="${A}" font-size="7">GPS</text>
-    ${noImpl ? `<text x="${cx}" y="${ay+34}" fill="${M}" font-size="9" text-anchor="middle">brez delovne širine (vozilo)</text>` : hitch + `
+    ${noImpl ? `<text x="${cx}" y="${hy+32}" fill="${M}" font-size="9" text-anchor="middle">brez delovne širine (vozilo)</text>` : link + `
     <rect x="${Math.min(x1,x2)}" y="${iy-8}" width="${Math.max(Math.abs(x2-x1), 4)}" height="16" rx="4" fill="rgba(34,197,94,.22)" stroke="${G}" stroke-width="2"/>
     ${ticks}
     ${sym ? '' : `<line x1="${xc}" y1="${iy-8}" x2="${xc}" y2="${iy+8}" stroke="${A}" stroke-width="1.5" stroke-dasharray="3,2"/>`}
     ${sym ? dim(x1, x2, dy, fmtNum(width, 1) + ' m')
           : dim(x1, cx, dy, fmtNum(hL, 1) + ' m levo') + dim(cx, x2, dy, fmtNum(hR, 1) + ' m desno')}
-    ${back > 0 || v.trailed ? `<text x="${cx+13}" y="${(ay + iy)/2 + 3}" fill="${M}" font-size="9">${fmtNum(back, 1)} m nazaj${v.trailed ? ' · vlečen' : ''}</text>` : ''}`}
-  </svg>`;
+    ${back || v.trailed ? `<text x="${Math.max(gx, cx)+13}" y="${(gy + iy)/2 + 3}" fill="${M}" font-size="9">${fmtNum(back, 1)} m nazaj${v.trailed ? ' · vlečen' : ''}</text>` : ''}`}
+    <line x1="${gx-6}" y1="${gy}" x2="${gx+6}" y2="${gy}" stroke="${A}" stroke-width="1"/>
+    <line x1="${gx}" y1="${gy-6}" x2="${gx}" y2="${gy+6}" stroke="${A}" stroke-width="1"/>
+    <circle cx="${gx}" cy="${gy}" r="3.5" fill="${A}" stroke="rgba(0,0,0,.4)" stroke-width="1"/>
+    <text x="${gx+8}" y="${gy+3}" fill="${A}" font-size="7">GPS</text>
+  </svg>` + (meta ? '' : `<div class="small muted" style="text-align:center;margin:2px 0 6px">dolg pritisk na sliko = urejanje z vlečenjem</div>`);
+}
+
+// Vlečni urejevalnik geometrije (dolg pritisk na predogled): povleci GPS anteno,
+// robova priključka in priključek; vrednosti zapiše nazaj v obrazec editMachine.
+function openGeoEditor(){
+  const gv = k => document.getElementById('ff_' + k);
+  const num = x => { const f = parseFloat(String(x ?? '').replace(',', '.')); return isFinite(f) ? f : 0; };
+  const r1 = x => Math.round(x * 10) / 10;
+  const v = { width: num(gv('width')?.value), extL: num(gv('extL')?.value), extR: num(gv('extR')?.value),
+              backM: num(gv('backM')?.value), antLat: num(gv('antLat')?.value), hitchM: num(gv('hitchM')?.value),
+              trailed: !!gv('trailed')?.checked };
+  if (!v.extL && !v.extR){ v.extL = v.extR = r1((v.width || 3) / 2); }  // seed za urejanje robov
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;z-index:1000;background:var(--bg,#0b1220);display:flex;flex-direction:column;gap:8px;padding:12px;overflow-y:auto';
+  ov.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center">
+      <strong>Geometrija stroja</strong><button class="minibtn" id="geoDone">Končano</button></div>
+    <div class="small muted">Povleci: GPS anteno (bočno + naprej/nazaj), robova priključka (širina), priključek (odmik nazaj). Pivot je priklopna točka.</div>
+    <div id="geoInfo" class="small"></div>
+    <div id="geoWrap" style="touch-action:none"></div>`;
+  document.body.appendChild(ov);
+  const wrap = ov.querySelector('#geoWrap'), meta = {};
+  const render = () => {
+    const h = (x, y) => `<circle cx="${x}" cy="${y}" r="12" fill="rgba(245,158,11,.14)" stroke="#f59e0b" stroke-width="1" stroke-dasharray="2,2"/>`;
+    wrap.innerHTML = machinePreviewSvg(v, meta)
+      .replace('</svg>', h(meta.gx, meta.gy) + h(meta.x1, meta.iy) + h(meta.x2, meta.iy) + '</svg>');
+    ov.querySelector('#geoInfo').textContent =
+      `antena ${fmtNum(Math.abs(v.antLat), 1)} m ${v.antLat < 0 ? 'desno' : 'levo'}, ${fmtNum(v.hitchM, 1)} m pred priklopom · ` +
+      `center ${fmtNum(v.backM, 1)} m za anteno · ${fmtNum(v.extL, 1)} + ${fmtNum(v.extR, 1)} = ${fmtNum(v.extL + v.extR, 1)} m`;
+  };
+  // mapiranje kazalec→metri po M, zamrznjenem ob pointerdown — živi meta med
+  // vlečenjem spreminja sc (rob širi stroj → fit pomanjša merilo) in bi ušel v zanko
+  const toVB = (e, M) => { const r = wrap.firstElementChild.getBoundingClientRect();
+    return { x: (e.clientX - r.left) / r.width * M.W, y: (e.clientY - r.top) / r.height * M.H }; };
+  let drag = null;
+  ov.addEventListener('pointerdown', e => {
+    if (!wrap.contains(e.target)) return;
+    const p = toVB(e, meta);
+    let best = null, bd = 40;
+    for (const [k, x, y] of [['gps', meta.gx, meta.gy], ['L', meta.x1, meta.iy], ['R', meta.x2, meta.iy]]){
+      const d = Math.hypot(p.x - x, p.y - y);
+      if (d < bd){ bd = d; best = k; }
+    }
+    if (!best && Math.abs(p.y - meta.iy) < 22 && p.x > meta.x1 - 10 && p.x < meta.x2 + 10) best = 'bar';
+    if (!best) return;
+    drag = { kind: best, backM0: v.backM, hitchM0: v.hitchM, y0: p.y, m: { ...meta } };
+    ov.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  ov.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const M = drag.m, p = toVB(e, M), clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+    if (drag.kind === 'gps'){
+      v.antLat = r1(clamp((M.cx - p.x) / M.sc, -4, 4));
+      const h = r1(clamp((M.hy - p.y) / M.sc, -8, 8));
+      v.backM = r1(drag.backM0 + h - drag.hitchM0);   // stroj miruje, seli se antena
+      v.hitchM = h;
+    } else if (drag.kind === 'L') v.extL = r1(clamp((M.cx - p.x) / M.sc, 0, 30));
+    else if (drag.kind === 'R') v.extR = r1(clamp((p.x - M.cx) / M.sc, 0, 30));
+    else v.backM = r1(clamp(drag.backM0 + (p.y - drag.y0) / M.sc, -4, 30));
+    render();
+  });
+  ov.addEventListener('pointerup', () => { drag = null; });
+  ov.querySelector('#geoDone').onclick = () => {
+    for (const [k, val] of [['extL', v.extL], ['extR', v.extR], ['width', r1(v.extL + v.extR)],
+                            ['backM', v.backM], ['antLat', v.antLat], ['hitchM', v.hitchM]]){
+      const el = gv(k); if (el) el.value = String(val);
+    }
+    gv('extL')?.dispatchEvent(new Event('input', { bubbles: true }));  // osveži predogled v obrazcu
+    ov.remove();
+  };
+  render();
 }
 
 async function editMachine(id){
@@ -2032,7 +2116,7 @@ async function editMachine(id){
   if (!mch) return;
   const opOptions = [{ v: '', l: '— brez —' }].concat(
     Object.values(allOperations()).map(o => ({ v: o.id, l: o.name })));
-  const f = await appForm('Stroj: ' + mch.name, [
+  const fp = appForm('Stroj: ' + mch.name, [
     { key: 'name', label: 'Ime', type: 'text', value: mch.name },
     { key: 'defaultOp', label: 'Privzeti tip dela (ob izbiri stroja)', type: 'select',
       options: opOptions, value: mch.defaultOp || '' },
@@ -2040,16 +2124,24 @@ async function editMachine(id){
     { key: 'extL', label: 'Doseg LEVO od sredine (m) — za asimetrične', type: 'number', step: '0.1', value: mch.extL ?? '' },
     { key: 'extR', label: 'Doseg DESNO od sredine (m)', type: 'number', step: '0.1', value: mch.extR ?? '' },
     { key: 'backM', label: 'Delovni center ZA anteno/traktorjem (m)', type: 'number', step: '0.1', value: mch.backM ?? '' },
-    { key: 'trailed', label: 'Vlečen (za traktorjem, ne fiksen na hidravliki)', type: 'check', value: !!mch.trailed },
+    { key: 'antLat', label: 'GPS antena bočno od osi (m, + = levo)', type: 'number', step: '0.1', value: mch.antLat ?? '' },
+    { key: 'hitchM', label: 'GPS antena pred priklopno točko (m)', type: 'number', step: '0.1', value: mch.hitchM ?? '' },
+    { key: 'trailed', label: 'Vlečen / prikolica (pivot na priklopu)', type: 'check', value: !!mch.trailed },
     { key: 'cph', label: 'Lastna cena (€/h) — amortizacija, vzdrževanje', type: 'number', step: '0.5', value: mch.cph ?? '' },
     { key: 'lph', label: 'Poraba goriva (l/h)', type: 'number', step: '0.5', value: mch.lph ?? '' },
     { key: 'fuel', label: 'Cena goriva (€/l)', type: 'number', step: '0.01', value: mch.fuel ?? '' },
     { key: 'spha', label: 'Storitvena cena (€/ha) — kar bi zaračunal', type: 'number', step: '1', value: mch.spha ?? '' }
   ], 'Shrani', machinePreviewSvg);
+  setTimeout(() => {
+    const pv = document.getElementById('ffPreview');
+    if (pv) bindLongPress(pv, openGeoEditor);
+  }, 60);
+  const f = await fp;
   if (!f) return;
   const patch = { name: f.name || mch.name, width: f.width || mch.width,
                   defaultOp: f.defaultOp || null,
                   extL: f.extL, extR: f.extR, backM: f.backM, trailed: f.trailed,
+                  antLat: f.antLat, hitchM: f.hitchM,
                   cph: f.cph, lph: f.lph, fuel: f.fuel, spha: f.spha };
   const customs = state.settings.customMachines || [];
   const ci = customs.findIndex(x => x.id === id);

@@ -1,6 +1,6 @@
 # AgroTracker — RESUME (hitri vstop po restartu)
 
-Zadnja posodobitev: 2026-07-17, verzija **v5.2.1** (SW cache v19), live na
+Zadnja posodobitev: 2026-07-17, verzija **v5.3** (SW cache v20), live na
 `https://lenartk.github.io/agrotracker/`.
 
 ## Kaj je AgroTracker
@@ -48,6 +48,12 @@ kmetije (KMG-MID **100220160**, kraška regija, pretežno travniki + njive).
   predpisne karte (rx → HUD cilj + BLE rate); ISOBUS/CAN priprava; popravljanje sej.
 - v5.1: izvoz poročila parcele + analiza narisanega območja (količine po operacijah).
 - v5.2: stroj primaren (→ privzeti defaultOp), dolg pritisk (op/stroj=nastavitve, parcela=karta).
+- v5.3: geometrija razširjena — antLat (antena bočno od osi, + = levo) in hitchM
+  (antena pred priklopno točko); vlečeni: pivot togo za anteno (offsetBack +
+  bočna korekcija heading+90), delovna točka tractrix za pivotom (tow = backM−hitchM).
+  Vlečni urejevalnik openGeoEditor (dolg pritisk na predogled v editMachine):
+  povleci GPS anteno / robova / priključek; mapiranje kazalca zamrznjeno ob
+  pointerdown (živi sc bi ušel v zanko). machinePreviewSvg(v, meta) vrne koordinate.
 
 ## GERK dostop (POMEMBNO, glej memory gerk_dostop)
 - Uradni javni izvoz (208 MB) **NIMA KMG_MID** → pripadnost dobimo iz javnega
