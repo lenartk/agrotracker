@@ -1978,23 +1978,52 @@ function renderMachinesList(){
   });
 }
 
-// Predogled geometrije: pogled od zgoraj — traktor + priključek
+// Predogled geometrije: pogled od zgoraj, smer vožnje navzgor — levo stroja = levo na ekranu.
+// Prazna extL/extR = simetričen stroj, nariše width. Sprejme surove vnose (vejica!).
 function machinePreviewSvg(v){
-  const extL = +v.extL || 0, extR = +v.extR || 0, back = +v.backM || 0;
-  const w = Math.max(extL + extR, 2), span = Math.max(extL, extR, 2);
-  const sc = 120 / Math.max(span * 2, 4);          // px na meter
-  const cx = 150, cy0 = 34;
-  const iy = cy0 + 26 + back * sc * 0.55;
-  const x1 = cx - extR * sc, x2 = cx + extL * sc;  // levo od smeri = desno na ekranu gledano od zadaj? prikaz: levo stroja = levo na ekranu
-  return `<svg viewBox="0 0 300 ${Math.max(120, iy + 26)}" style="width:100%;background:var(--sunken);border-radius:8px">
-    <rect x="${cx-16}" y="${cy0-24}" width="32" height="44" rx="6" fill="none" stroke="#86efac" stroke-width="2"/>
-    <circle cx="${cx}" cy="${cy0-4}" r="3" fill="#f59e0b"/>
-    <line x1="${cx}" y1="${cy0+20}" x2="${cx}" y2="${iy-9}" stroke="#94a3b8" stroke-width="2" ${v.trailed ? 'stroke-dasharray="4,4"' : ''}/>
-    <rect x="${Math.min(x1,x2)}" y="${iy-9}" width="${Math.abs(x2-x1) || 4}" height="18" rx="4" fill="rgba(34,197,94,.25)" stroke="#22c55e" stroke-width="2"/>
-    <line x1="${cx}" y1="${cy0-30}" x2="${cx}" y2="${iy+18}" stroke="rgba(255,255,255,.25)" stroke-width="1" stroke-dasharray="2,4"/>
-    <text x="${x2+4}" y="${iy+4}" fill="#93a498" font-size="10">${(extL||0).toFixed(1)} m levo</text>
-    <text x="${x1-4}" y="${iy+4}" fill="#93a498" font-size="10" text-anchor="end">${(extR||0).toFixed(1)} m desno</text>
-    <text x="${cx+6}" y="${(cy0+iy)/2}" fill="#93a498" font-size="10">${(back||0).toFixed(1)} m nazaj${v.trailed ? ' (vlečen)' : ''}</text>
+  const num = x => { const f = parseFloat(String(x ?? '').replace(',', '.')); return isFinite(f) ? f : 0; };
+  const extL = num(v.extL), extR = num(v.extR), back = num(v.backM), width = num(v.width);
+  const sym = !extL && !extR;
+  const hL = sym ? width / 2 : extL, hR = sym ? width / 2 : extR;   // m levo/desno od osi
+  const W = 320, cx = W / 2, sc = 118 / Math.max(hL, hR, 1.8);      // px na meter
+  const ty = 16, ay = ty + 39;                                      // vrh traktorja, antena na zadnji osi
+  const iy = ay + 9 + Math.min(Math.max(14 + back * sc, 16), 92);   // y delovnega centra
+  const x1 = cx - hL * sc, x2 = cx + hR * sc, dy = iy + 20, xc = (x1 + x2) / 2;
+  const noImpl = hL + hR <= 0;
+  const H = Math.max(noImpl ? ay + 42 : dy + 12, 118);
+  const G = '#22c55e', M = '#93a498', A = '#f59e0b';
+  const dim = (a, b, y, txt) => `
+    <line x1="${a}" y1="${y}" x2="${b}" y2="${y}" stroke="${M}" stroke-width="1"/>
+    <line x1="${a}" y1="${y-4}" x2="${a}" y2="${y+4}" stroke="${M}" stroke-width="1"/>
+    <line x1="${b}" y1="${y-4}" x2="${b}" y2="${y+4}" stroke="${M}" stroke-width="1"/>
+    <text x="${(a+b)/2}" y="${y-5}" fill="${M}" font-size="9" text-anchor="middle">${txt}</text>`;
+  let ticks = '';
+  const step = hL + hR > 14 ? 2 : 1;
+  for (let m = step; !noImpl && m < hL + hR - 0.01; m += step)
+    ticks += `<line x1="${x1 + m*sc}" y1="${iy-8}" x2="${x1 + m*sc}" y2="${iy+8}" stroke="rgba(34,197,94,.35)" stroke-width="1"/>`;
+  const hitch = v.trailed
+    ? `<line x1="${cx}" y1="${ay+9}" x2="${cx}" y2="${iy-8}" stroke="#94a3b8" stroke-width="2" stroke-dasharray="4,4"/>
+       <circle cx="${cx}" cy="${ay+14}" r="2.5" fill="#94a3b8"/>`
+    : `<line x1="${cx-8}" y1="${ay+9}" x2="${cx-4}" y2="${iy-8}" stroke="#94a3b8" stroke-width="2"/>
+       <line x1="${cx+8}" y1="${ay+9}" x2="${cx+4}" y2="${iy-8}" stroke="#94a3b8" stroke-width="2"/>`;
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;background:var(--sunken);border-radius:8px">
+    <line x1="${cx}" y1="6" x2="${cx}" y2="${(noImpl ? ay + 22 : iy) + 12}" stroke="rgba(255,255,255,.22)" stroke-width="1" stroke-dasharray="2,4"/>
+    <path d="M ${cx-4} 12 L ${cx} 5 L ${cx+4} 12" fill="none" stroke="${M}" stroke-width="1.5"/>
+    <rect x="${cx-19}" y="${ty+3}" width="5" height="12" rx="2" fill="#475569"/>
+    <rect x="${cx+14}" y="${ty+3}" width="5" height="12" rx="2" fill="#475569"/>
+    <rect x="${cx-23}" y="${ty+29}" width="8" height="19" rx="3" fill="#475569"/>
+    <rect x="${cx+15}" y="${ty+29}" width="8" height="19" rx="3" fill="#475569"/>
+    <rect x="${cx-11}" y="${ty}" width="22" height="22" rx="5" fill="rgba(134,239,172,.10)" stroke="#86efac" stroke-width="1.5"/>
+    <rect x="${cx-14}" y="${ty+20}" width="28" height="28" rx="4" fill="rgba(134,239,172,.16)" stroke="#86efac" stroke-width="1.5"/>
+    <circle cx="${cx}" cy="${ay}" r="3.5" fill="${A}" stroke="rgba(0,0,0,.4)" stroke-width="1"/>
+    <text x="${cx+7}" y="${ay+3}" fill="${A}" font-size="7">GPS</text>
+    ${noImpl ? `<text x="${cx}" y="${ay+34}" fill="${M}" font-size="9" text-anchor="middle">brez delovne širine (vozilo)</text>` : hitch + `
+    <rect x="${Math.min(x1,x2)}" y="${iy-8}" width="${Math.max(Math.abs(x2-x1), 4)}" height="16" rx="4" fill="rgba(34,197,94,.22)" stroke="${G}" stroke-width="2"/>
+    ${ticks}
+    ${sym ? '' : `<line x1="${xc}" y1="${iy-8}" x2="${xc}" y2="${iy+8}" stroke="${A}" stroke-width="1.5" stroke-dasharray="3,2"/>`}
+    ${sym ? dim(x1, x2, dy, fmtNum(width, 1) + ' m')
+          : dim(x1, cx, dy, fmtNum(hL, 1) + ' m levo') + dim(cx, x2, dy, fmtNum(hR, 1) + ' m desno')}
+    ${back > 0 || v.trailed ? `<text x="${cx+13}" y="${(ay + iy)/2 + 3}" fill="${M}" font-size="9">${fmtNum(back, 1)} m nazaj${v.trailed ? ' · vlečen' : ''}</text>` : ''}`}
   </svg>`;
 }
 
