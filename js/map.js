@@ -296,6 +296,14 @@ export class MapController {
     return Math.sqrt(dLat*dLat + dLng*dLng);
   }
 
+  // Stil črte poti (Prevoz: debelejša, v barvi operacije)
+  setDriveStyle(widthPx, color){
+    this._run(() => {
+      this.map.setPaintProperty('drive-line', 'line-width', widthPx);
+      this.map.setPaintProperty('drive-line', 'line-color', color);
+    });
+  }
+
   // Tanka črta poti — riše se VEDNO med sejo (tudi ko stroj ne dela)
   paintDrive(fromLL, toLL){
     const last = this._driveLastEnd;

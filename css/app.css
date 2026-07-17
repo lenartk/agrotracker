@@ -349,3 +349,32 @@ input:focus,select:focus{border-color:var(--accent)}
 :root[data-theme="day"] .badge.on{color:#15803d}
 :root[data-theme="day"] .badge.off{color:#b91c1c}
 :root[data-theme="day"] .badge.pause{color:#b45309}
+
+
+/* ============ MAP HUD (tekst čez mapo, brez okvirjev) ============ */
+.hud{position:absolute;left:12px;right:12px;z-index:10;pointer-events:none;
+  color:#fff;text-shadow:0 0 3px rgba(0,0,0,.95),0 1px 2px rgba(0,0,0,.9),0 0 8px rgba(0,0,0,.55)}
+.hud-top{top:calc(env(safe-area-inset-top,0px) + 10px);text-align:center}
+.hud-bottom{bottom:calc(env(safe-area-inset-bottom,0px) + 74px);text-align:center}
+.hud-big{font-family:var(--mono);font-variant-numeric:tabular-nums;
+  font-size:34px;font-weight:800;line-height:1.05}
+.hud-big small{font-size:13px;font-weight:600;margin-left:4px;opacity:.85}
+.hud-gap{display:inline-block;width:26px}
+.hud-line{font-size:14px;font-weight:700;margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hud-line.sm{font-size:12px;font-weight:600;opacity:.95}
+.hud-line.tiny{font-size:11px;font-weight:700;margin-top:3px}
+.hud-dot{opacity:.6;margin:0 5px}
+.hud-stat.ok{color:#7dfcae}
+.hud-stat.warn{color:#ffd166}
+.hud-stat.err{color:#ff8f8f}
+.hud-stat.on{color:#7dfcae}
+.hud-stat.pause{color:#ffd166}
+.hud-stat.off{color:#c7cfc9}
+
+.map-actions{position:absolute;left:8px;right:8px;
+  bottom:calc(env(safe-area-inset-bottom,0px) + 8px);
+  z-index:10;display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:8px}
+.map-actions .bigbtn{height:56px;box-shadow:0 4px 14px rgba(0,0,0,.45)}
+.bigbtn.work-on{background:var(--accent-strong);border-color:#1d7f3f}
+.bigbtn.work-off{background:#374151;border-color:#4b5563}

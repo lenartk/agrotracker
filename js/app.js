@@ -87,7 +87,73 @@ function appConfirm(msg, { title = 'Potrditev', okLabel = 'V redu', danger = fal
 }
 function appInfo(msg, title = 'Obvestilo'){ return appConfirm(msg, { title, cancel: false }); }
 
-const opSvg = (opId) => OPERATIONS[opId]?.svg || 'wrench';
+// Obrazec v dialogu: fields = [{key,label,type:'text'|'number'|'check',value,step?}]
+// Vrne objekt vrednosti ali null (preklic).
+function appForm(title, fields, okLabel = 'Shrani'){
+  return new Promise(resolve => {
+    $('#dlgTitle').textContent = title;
+    const msg = $('#dlgMsg');
+    msg.innerHTML = fields.map(f => {
+      const id = 'ff_' + f.key;
+      if (f.type === 'check'){
+        return `<label class="toggle"><span>${f.label}</span><input type="checkbox" id="${id}" ${f.value ? 'checked' : ''}></label>`;
+      }
+      const val = f.value != null ? String(f.value).replace(/"/g, '&quot;') : '';
+      return `<div class="rowline tall" style="margin-bottom:4px"><span>${f.label}</span></div>
+        <input type="${f.type || 'text'}" id="${id}" value="${val}" ${f.step ? `step="${f.step}"` : ''} style="margin-bottom:8px">`;
+    }).join('');
+    const ok = $('#dlgOk'), cancelBtn = $('#dlgCancel'), scrim = $('#dlgScrim');
+    ok.textContent = okLabel;
+    ok.className = 'minibtn';
+    cancelBtn.style.display = '';
+    const close = (val) => {
+      scrim.classList.remove('open');
+      msg.innerHTML = '';
+      resolve(val);
+    };
+    ok.onclick = () => {
+      const out = {};
+      for (const f of fields){
+        const el = document.getElementById('ff_' + f.key);
+        if (f.type === 'check') out[f.key] = el.checked;
+        else if (f.type === 'number'){
+          const v = parseFloat(el.value.replace(',', '.'));
+          out[f.key] = isFinite(v) ? v : null;
+        } else out[f.key] = el.value.trim();
+      }
+      close(out);
+    };
+    cancelBtn.onclick = () => close(null);
+    scrim.onclick = (e) => { if (e.target === scrim) close(null); };
+    scrim.classList.add('open');
+  });
+}
+
+const OP_COLORS = ['#38bdf8', '#f472b6', '#fb923c', '#a3e635', '#c084fc', '#2dd4bf', '#facc15'];
+
+// Operacije in stroji: vgrajeni + uporabniški (nastavitve)
+function allOperations(){
+  const merged = { ...OPERATIONS };
+  for (const o of (state.settings.customOps || [])){
+    merged[o.id] = {
+      id: o.id, name: o.name, icon: '', svg: 'wrench',
+      color: o.color || '#38bdf8', fillOpacity: 0.38,
+      valueLabel: o.name, valueUnit: o.unit || '',
+      hint: '', requiresActive: !!o.requiresActive,
+      noPaint: !!o.noPaint, defaultMachines: []
+    };
+  }
+  return merged;
+}
+
+function allMachines(){
+  const ovr = state.settings.machineParams || {};
+  const base = MACHINES.map(mch => ({ ...mch, ...(ovr[mch.id] || {}) }));
+  const custom = (state.settings.customMachines || []).map(mch => ({ svg: 'wrench', ...mch }));
+  return base.concat(custom);
+}
+
+const opSvg = (opId) => allOperations()[opId]?.svg || 'wrench';
 const svgIcon = (name, cls = 'icon') => `<svg class="${cls}"><use href="#i-${name}"/></svg>`;
 
 function showView(name){
@@ -394,7 +460,7 @@ async function importGerkData(gj){
 function renderHome(){
   // Operacije
   const opGrid = $('#opGrid');
-  opGrid.innerHTML = Object.values(OPERATIONS).map(op => `
+  opGrid.innerHTML = Object.values(allOperations()).map(op => `
     <button class="op-card ${state.selectedOpId === op.id ? 'selected' : ''}" data-id="${op.id}">
       <div class="op-icon" style="color:${op.color};background:${op.color}18;border:1px solid ${op.color}55">${svgIcon(op.svg || 'wrench')}</div>
       <div class="op-name">${op.name}</div>
@@ -407,7 +473,7 @@ function renderHome(){
 
   // Stroji
   const machRow = $('#machineRow');
-  machRow.innerHTML = MACHINES.map(m => `
+  machRow.innerHTML = allMachines().map(m => `
     <button class="picker-chip ${state.selectedMachineId === m.id ? 'selected' : ''}" data-id="${m.id}">
       <span>${m.name}</span>
       <small>${fmtNum(m.width, 1)} m</small>
@@ -480,7 +546,7 @@ async function renderSeasonStats(){
 }
 
 function autoPickMachineForOp(){
-  const op = OPERATIONS[state.selectedOpId];
+  const op = allOperations()[state.selectedOpId];
   if (!op || !op.defaultMachines?.length) return;
   // Če trenutno izbran stroj ni med priporočenimi, preklopi na prvega priporočenega
   if (!op.defaultMachines.includes(state.selectedMachineId)){
@@ -586,28 +652,15 @@ function wireMap(){
 
 
   $('#startBtn').onclick = () => {
-    if (!state.session) { startSession(); return; }
-    if (state.session.state === 'paused') resumeSession();
-    else toast('Seja že teče');
+    if (!state.session || state.session.state === 'stopped'){ startSession(); return; }
+    if (state.session.state === 'paused'){ resumeSession(); return; }
+    toggleManualWork(); // med sejo je glavna tipka DELA/STOJI
   };
   $('#pauseBtn').onclick = () => pauseSession();
   $('#stopBtn').onclick = () => confirmStopSession();
 
   initLightbar();
   $('#mapAbBtn').onclick = () => onAbButton();
-
-  // Ročno stikalo barvanja (ko ni BLE signala iz stroja)
-  $('#machineStateBox').onclick = () => {
-    if (state.settings.useBleMachineActive && state.telemetry.active != null){
-      toast('Stanje prihaja iz stroja (BLE).');
-      return;
-    }
-    if (!state.session){ toast('Ni aktivne seje.'); return; }
-    state.manualWork = !state.manualWork;
-    navigator.vibrate?.(40);
-    toast(state.manualWork ? 'Barvanje VKLOPLJENO (stroj dela)' : 'Barvanje IZKLOPLJENO (samo pot)');
-    refreshTelemetryUI();
-  };
 }
 
 // ============ AB GUIDANCE (lightbar) ============
@@ -780,7 +833,8 @@ function wireDrawer(){
 
 function renderDrawer(){
   const s = state.session;
-  const op = s ? OPERATIONS[s.operation.id] : OPERATIONS[state.selectedOpId];
+  const ops = allOperations();
+  const op = s ? (ops[s.operation.id] || s.operation) : ops[state.selectedOpId];
   const w = effectiveWidthM();
   $('#drawerOp').textContent = op ? op.name : '—';
   $('#drawerMachine').textContent = s?.machine ? s.machine.name : '—';
@@ -871,7 +925,7 @@ function effectiveWidthM(){
   if (state.settings.widthOverride) return state.settings.widthOverride;
   if (state.settings.useBleWidth && state.telemetry.width && state.telemetry.width > 0) return state.telemetry.width;
   if (state.session?.machine) return state.session.machine.width;
-  const m = MACHINES.find(x => x.id === state.selectedMachineId);
+  const m = allMachines().find(x => x.id === state.selectedMachineId);
   return m ? m.width : 3.0;
 }
 
@@ -890,8 +944,8 @@ async function startSession(){
     toast('Seja že teče');
     return;
   }
-  const op = OPERATIONS[state.selectedOpId];
-  const machine = MACHINES.find(m => m.id === state.selectedMachineId);
+  const op = allOperations()[state.selectedOpId];
+  const machine = allMachines().find(m => m.id === state.selectedMachineId);
   let parcel = state.parcels.find(p => p.id === state.selectedParcelId) || null;
 
   // Ni izbrane parcele, GPS pa je — poglej v GERK knjižnico, kje stojiš
@@ -959,6 +1013,8 @@ async function startSession(){
   }
   updateAbBtn();
 
+  // Prevoz: debelejša črta poti v barvi operacije; sicer tanka bela
+  state.map.setDriveStyle(op.noPaint ? 2.8 : 1.6, op.noPaint ? op.color : '#ffffff');
   state.manualWork = true; // nova seja: privzeto "stroj dela"
   setTrackingUI('running');
   refreshTelemetryUI();
@@ -1014,29 +1070,64 @@ function stopAutoSaveTimer(){
 function setTrackingUI(status){
   const badge = $('#trackingBadge');
   if (status === 'running'){
-    badge.textContent = 'Aktivno'; badge.className = 'badge on';
-    $('#startBtn').textContent = 'Teče';
-    $('#startBtn').disabled = true;
+    badge.textContent = 'Aktivno'; badge.className = 'hud-stat on';
+    $('#startBtn').disabled = false;
     $('#pauseBtn').disabled = false;
     $('#stopBtn').disabled = false;
+    refreshWorkButton(); // glavna tipka postane DELA/STOJI
   } else if (status === 'paused'){
-    badge.textContent = 'Pavza'; badge.className = 'badge pause';
+    badge.textContent = 'Pavza'; badge.className = 'hud-stat pause';
     $('#startBtn').textContent = 'Nadaljuj';
+    $('#startBtn').className = 'bigbtn primary';
     $('#startBtn').disabled = false;
     $('#pauseBtn').disabled = true;
     $('#stopBtn').disabled = false;
   } else if (status === 'stopped'){
-    badge.textContent = 'Končano'; badge.className = 'badge off';
+    badge.textContent = 'Končano'; badge.className = 'hud-stat off';
     $('#startBtn').textContent = 'Začni novo';
+    $('#startBtn').className = 'bigbtn primary';
     $('#startBtn').disabled = false;
     $('#pauseBtn').disabled = true;
     $('#stopBtn').disabled = true;
   } else {
-    badge.textContent = 'Ustavljeno'; badge.className = 'badge off';
+    badge.textContent = 'Ustavljeno'; badge.className = 'hud-stat off';
     $('#startBtn').textContent = 'Začni';
+    $('#startBtn').className = 'bigbtn primary';
     $('#startBtn').disabled = false;
     $('#pauseBtn').disabled = true;
     $('#stopBtn').disabled = true;
+  }
+}
+
+// Glavna tipka med sejo: DELA/STOJI (ročno) oz. stanje iz stroja (BLE)
+function toggleManualWork(){
+  if (state.settings.useBleMachineActive && state.telemetry.active != null){
+    toast('Stanje prihaja iz stroja (BLE).');
+    return;
+  }
+  state.manualWork = !state.manualWork;
+  navigator.vibrate?.(40);
+  toast(state.manualWork ? 'STROJ DELA — barvanje vklopljeno' : 'STROJ STOJI — samo pot');
+  refreshWorkButton();
+}
+
+function refreshWorkButton(){
+  const btn = $('#startBtn');
+  if (!state.session || state.session.state !== 'running') return;
+  if (state.session.operation.noPaint){
+    btn.textContent = 'PREVOZ';
+    btn.className = 'bigbtn work-off';
+    return;
+  }
+  const t = state.telemetry;
+  if (state.settings.useBleMachineActive && t.active != null){
+    if (t.alarm){ btn.textContent = 'ALARM'; btn.className = 'bigbtn stop'; }
+    else if (t.lifted){ btn.textContent = 'DVIGNJEN'; btn.className = 'bigbtn pauseb'; }
+    else if (t.active){ btn.textContent = 'DELA'; btn.className = 'bigbtn work-on'; }
+    else { btn.textContent = 'MIRUJE'; btn.className = 'bigbtn work-off'; }
+  } else {
+    btn.textContent = state.manualWork ? 'DELA' : 'STOJI';
+    btn.className = 'bigbtn ' + (state.manualWork ? 'work-on' : 'work-off');
   }
 }
 
@@ -1107,7 +1198,7 @@ function updateMapStats(){
   if (s.parcel){
     const pct = Math.min(100, Math.round((s.coveredHa / s.parcel.ha) * 100));
     $('#pctVal').textContent = pct + '%';
-    $('#progressFill').style.width = pct + '%';
+    const pf = $('#progressFill'); if (pf) pf.style.width = pct + '%';
     // Preostalo + ocena časa iz trenutne hitrosti in širine
     const remainHa = Math.max(0, s.parcel.ha - s.coveredHa);
     $('#remainVal').textContent = fmtNum(remainHa, 2);
@@ -1118,7 +1209,7 @@ function updateMapStats(){
       : (remainHa <= 0.005 ? '✓' : '—');
   } else {
     $('#pctVal').textContent = '—';
-    $('#progressFill').style.width = '0%';
+    const pf2 = $('#progressFill'); if (pf2) pf2.style.width = '0%';
     $('#remainVal').textContent = '—';
     $('#etaVal').textContent = '—';
   }
@@ -1136,19 +1227,19 @@ function refreshGpsPill(fix){
   else if (fix.source === 'sim') { cls = 'warn'; label = 'SIM'; }
   else if (fix.source === 'ble') { cls = 'ok'; label = 'RTK/ESP'; }
   else label = 'GPS ±' + (fix.accuracyM?.toFixed(0) || '?') + 'm';
-  pill.className = 'pill ' + cls;
-  pill.innerHTML = '<span class="dot"></span>' + label;
+  pill.className = 'hud-stat ' + cls;
+  pill.textContent = label;
 }
 
 function refreshBlePill(){
   const pill = $('#blePill');
   if (!pill) return;
   if (ble.connected){
-    pill.className = 'pill ok';
-    pill.innerHTML = '<span class="dot"></span>BLE';
+    pill.className = 'hud-stat ok';
+    pill.textContent = 'BLE';
   } else {
-    pill.className = 'pill';
-    pill.innerHTML = '<span class="dot"></span>Brez stroja';
+    pill.className = 'hud-stat off';
+    pill.textContent = 'Brez stroja';
   }
 }
 
@@ -1156,11 +1247,11 @@ function refreshOnlinePill(){
   const pill = $('#onlinePill');
   if (!pill) return;
   if (state.online){
-    pill.className = 'pill ok';
-    pill.innerHTML = '<span class="dot"></span>Online';
+    pill.className = 'hud-stat ok';
+    pill.textContent = 'Online';
   } else {
-    pill.className = 'pill warn';
-    pill.innerHTML = '<span class="dot"></span>Offline';
+    pill.className = 'hud-stat warn';
+    pill.textContent = 'Offline';
   }
 }
 
@@ -1180,6 +1271,7 @@ function refreshTelemetryUI(){
   if ($('#flowVal') && state.telemetry.flow != null){
     $('#flowVal').textContent = fmtNum(state.telemetry.flow, 1);
   }
+  refreshWorkButton();
   // Status stroja (sejalnica preko BLE): ALARM > DVIGNJEN > SEJE > MIRUJE
   const ms = $('#machineState');
   if (ms){
@@ -1240,6 +1332,149 @@ function setGpsSource(src){
 
 function gpsSourceLabel(src){
   return { phone: 'Telefon', ble: 'ESP32 (BLE)', sim: 'Simulacija' }[src] || src;
+}
+
+// ============ UREDNIK OPERACIJ IN STROJEV ============
+
+function renderOpsList(){
+  const el = $('#settingsOpsList');
+  if (!el) return;
+  const ops = state.settings.customOps || [];
+  el.innerHTML = ops.length ? ops.map((o, i) => `
+    <div class="rowline">
+      <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${o.color};margin-right:6px"></span>${escapeHtml(o.name)} <span class="small muted">${o.unit || ''}${o.noPaint ? ' · samo pot' : ''}</span></span>
+      <button class="minibtn danger" data-i="${i}" style="padding:6px 10px">Izbriši</button>
+    </div>`).join('') : '<div class="small muted">Ni dodatnih operacij.</div>';
+  el.querySelectorAll('button[data-i]').forEach(b => {
+    b.onclick = async () => {
+      const i = +b.dataset.i;
+      if (!await appConfirm(`Izbrišem operacijo "${ops[i].name}"?`, { okLabel: 'Izbriši', danger: true })) return;
+      ops.splice(i, 1);
+      await persistSettings();
+      renderOpsList(); renderHome();
+    };
+  });
+}
+
+async function addCustomOp(){
+  const f = await appForm('Nova operacija', [
+    { key: 'name', label: 'Ime (npr. Mulčenje)', type: 'text', value: '' },
+    { key: 'unit', label: 'Enota vrednosti (npr. kg/ha, l/ha — lahko prazno)', type: 'text', value: '' },
+    { key: 'requiresActive', label: 'Barvaj samo, ko stroj javi "aktiven" (BLE)', type: 'check', value: false },
+    { key: 'noPaint', label: 'Samo pot (brez barvanja — kot Prevoz)', type: 'check', value: false }
+  ], 'Dodaj');
+  if (!f || !f.name) return;
+  state.settings.customOps = state.settings.customOps || [];
+  const used = state.settings.customOps.length;
+  state.settings.customOps.push({
+    id: 'cust_' + newId('op'),
+    name: f.name, unit: f.unit,
+    color: OP_COLORS[used % OP_COLORS.length],
+    requiresActive: f.requiresActive, noPaint: f.noPaint
+  });
+  await persistSettings();
+  renderOpsList(); renderHome();
+  toast('Operacija dodana: ' + f.name);
+}
+
+function renderMachinesList(){
+  const el = $('#settingsMachinesList');
+  if (!el) return;
+  el.innerHTML = allMachines().map(mch => `
+    <div class="rowline">
+      <span style="cursor:pointer" data-stat="${mch.id}"><strong>${escapeHtml(mch.name)}</strong> <span class="small muted">${fmtNum(mch.width, 1)} m${mch.cph ? ' · ' + fmtNum(mch.cph, 0) + ' €/h' : ''}</span></span>
+      <button class="minibtn" data-edit="${mch.id}" style="padding:6px 10px">Uredi</button>
+    </div>`).join('');
+  el.querySelectorAll('[data-stat]').forEach(s => {
+    s.onclick = () => showMachineStats(s.dataset.stat);
+  });
+  el.querySelectorAll('button[data-edit]').forEach(b => {
+    b.onclick = () => editMachine(b.dataset.edit);
+  });
+}
+
+async function editMachine(id){
+  const mch = allMachines().find(x => x.id === id);
+  if (!mch) return;
+  const f = await appForm('Stroj: ' + mch.name, [
+    { key: 'name', label: 'Ime', type: 'text', value: mch.name },
+    { key: 'width', label: 'Delovna širina (m)', type: 'number', step: '0.1', value: mch.width },
+    { key: 'cph', label: 'Lastna cena (€/h) — amortizacija, vzdrževanje', type: 'number', step: '0.5', value: mch.cph ?? '' },
+    { key: 'lph', label: 'Poraba goriva (l/h)', type: 'number', step: '0.5', value: mch.lph ?? '' },
+    { key: 'fuel', label: 'Cena goriva (€/l)', type: 'number', step: '0.01', value: mch.fuel ?? '' },
+    { key: 'spha', label: 'Storitvena cena (€/ha) — kar bi zaračunal', type: 'number', step: '1', value: mch.spha ?? '' }
+  ]);
+  if (!f) return;
+  const patch = { name: f.name || mch.name, width: f.width || mch.width,
+                  cph: f.cph, lph: f.lph, fuel: f.fuel, spha: f.spha };
+  const customs = state.settings.customMachines || [];
+  const ci = customs.findIndex(x => x.id === id);
+  if (ci >= 0) Object.assign(customs[ci], patch);
+  else {
+    state.settings.machineParams = state.settings.machineParams || {};
+    state.settings.machineParams[id] = { ...(state.settings.machineParams[id] || {}), ...patch };
+  }
+  await persistSettings();
+  renderMachinesList(); renderHome();
+  toast('Shranjeno: ' + patch.name);
+}
+
+async function addCustomMachine(){
+  const f = await appForm('Nov stroj / vozilo', [
+    { key: 'name', label: 'Ime (npr. Mulčer, Avto)', type: 'text', value: '' },
+    { key: 'width', label: 'Delovna širina (m; za vozila pusti 0)', type: 'number', step: '0.1', value: 2.0 }
+  ], 'Dodaj');
+  if (!f || !f.name) return;
+  state.settings.customMachines = state.settings.customMachines || [];
+  state.settings.customMachines.push({ id: 'custm_' + newId('m'), name: f.name, width: f.width || 0, tag: '' });
+  await persistSettings();
+  renderMachinesList(); renderHome();
+  toast('Dodan: ' + f.name);
+}
+
+// Statistika stroja iz vseh sej: ure, efektivne ure, ha, km, hitrost, stroški
+async function showMachineStats(id){
+  const mch = allMachines().find(x => x.id === id);
+  if (!mch) return;
+  const all = await savedSessions();
+  const mine = all.filter(s => s.machine?.id === id);
+  let ms = 0, effMs = 0, ha = 0, km = 0, effKm = 0;
+  for (const s of mine){
+    ms += s.durationMs || 0;
+    ha += s.coveredHa || 0;
+    km += (s.distanceM || 0) / 1000;
+    effKm += (s.activeDistanceM || 0) / 1000;
+    // efektivni čas: seštej dt med zaporednima aktivnima točkama tracka
+    const tr = s.track || [];
+    for (let i = 1; i < tr.length; i++){
+      if (tr[i].active && tr[i-1].active){
+        const dt = tr[i].t - tr[i-1].t;
+        if (dt > 0 && dt < 10000) effMs += dt;
+      }
+    }
+  }
+  const h = ms / 3600000, effH = effMs / 3600000;
+  const avgKmh = effH > 0.02 ? effKm / effH : 0;
+  const haPerH = effH > 0.02 ? ha / effH : 0;
+  const cost = (mch.cph ? h * mch.cph : 0) + (mch.lph && mch.fuel ? h * mch.lph * mch.fuel : 0);
+  const value = mch.spha ? ha * mch.spha : 0;
+  const row = (l, v) => `<div class="rowline"><span class="small muted">${l}</span><strong>${v}</strong></div>`;
+  const body = $('#modalBody');
+  body.innerHTML = `
+    <div style="font-weight:800;font-size:15px;margin-bottom:8px">${escapeHtml(mch.name)} — statistika</div>
+    ${row('Sej', mine.length)}
+    ${row('Ure (skupaj)', fmtNum(h, 1) + ' h')}
+    ${row('Efektivne ure (delo)', fmtNum(effH, 1) + ' h')}
+    ${row('Obdelano', fmtNum(ha, 2) + ' ha')}
+    ${row('Prevoženo', fmtNum(km, 1) + ' km')}
+    ${row('Povp. delovna hitrost', fmtNum(avgKmh, 1) + ' km/h')}
+    ${row('Storilnost', fmtNum(haPerH, 2) + ' ha/h')}
+    ${mch.lph && mch.fuel ? row('Gorivo (ocena)', fmtNum(h * mch.lph, 0) + ' l = ' + fmtNum(h * mch.lph * mch.fuel, 0) + ' €') : ''}
+    ${cost ? row('Lastni strošek (ocena)', fmtNum(cost, 0) + ' €') : ''}
+    ${ha > 0 && cost ? row('Strošek na ha', fmtNum(cost / ha, 1) + ' €/ha') : ''}
+    ${value ? row('Storitvena vrednost', fmtNum(value, 0) + ' €') : ''}
+    <div class="hint" style="margin-top:8px">Iz GPS sej. Poraba/odmerek iz stroja (BLE) in ISOBUS podatki pridejo v prihodnjih verzijah.</div>`;
+  $('#modalScrim').classList.add('open');
 }
 
 async function persistSettings(){
@@ -1591,6 +1826,8 @@ function wireSettingsView(){
     renderSettings();
   };
   $('#settingsExportAllBtn').onclick = () => exportAllSessionsAsGeoJSON();
+  $('#settingsAddOpBtn').onclick = () => addCustomOp();
+  $('#settingsAddMachineBtn').onclick = () => addCustomMachine();
   $('#settingsExportCsvBtn').onclick = () => exportSessionsCSV();
 
   // Modal close
@@ -1667,6 +1904,9 @@ async function renderSettings(){
   $('#settingsBleBtn').disabled = !ble.isSupported();
 
   $('#settingsOnlineStatus').textContent = state.online ? 'Online' : 'Offline';
+
+  renderOpsList();
+  renderMachinesList();
 
   const ua = navigator.userAgent;
   $('#settingsBrowser').textContent = ua.length > 80 ? ua.slice(0, 80) + '…' : ua;

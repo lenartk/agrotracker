@@ -2,7 +2,7 @@
 
 Sledenje obdelanim površinam na kmetiji. PWA (telefon + PC), ESP32 modul na stroju, GPS + BLE + RS485.
 
-**Verzija:** v4.0 (julij 2026)
+**Verzija:** v4.6 (julij 2026)
 **Repo:** `github.com/lenartk/agrotracker`
 **Live:** `https://lenartk.github.io/agrotracker/`
 **Status:** v3.1 deployed na GitHub Pages — terenski test v teku (GPS potrjen, drift odpravljen z glajenjem)
@@ -177,6 +177,25 @@ agrotracker_v2/
 ```
 
 ---
+
+## Vizija: precizno kmetijstvo (v5+)
+
+Aplikacija ima zdaj vse gradnike za pravo precizno kmetijstvo:
+
+1. **Predpisne karte (prescription maps)**: uvoz con kot GeoJSON (analiza prsti,
+   pridelek, N-senzor) s ciljnim odmerkom na cono. Telefon pozna pozicijo in cono →
+   po BLE pošlje ciljni odmerek modulu → modul po RS485 sejalnici (protokol že
+   ima setKgHa!). Stroj sam prilagaja količino po lokaciji. Zahteva: TX modula
+   na bus (zdaj poslušalec) + varen "override rate" okvir v sejalnica firmware.
+2. **Samodejni stop na že obdelanem**: ista pot (telefon že ve, kje je bilo
+   delano — opozorilo obstaja od v4.4).
+3. **ISOBUS/CAN branje** (traktor): ESP32 + CAN transceiver (~3 €) na
+   diagnostičnem priključku → obrati motorja, dejanska poraba l/h, hitrost,
+   moč → realna poraba na ha v statistiki strojev (zdaj ocena l/h × ure).
+4. **Heatmap analiz prsti**: uvoz vzorčnih točk/con (pH, P, K, humus) kot sloj
+   na karti — podlaga za predpisne karte.
+5. **Letna poročila**: setvena struktura po GERK-ih, vnosi po parcelah (za
+   dnevnik gnojenja / FADN / KOPOP evidence) — izvozi že nosijo GERK_PID.
 
 ## Roadmap — naslednji koraki, po prioriteti
 

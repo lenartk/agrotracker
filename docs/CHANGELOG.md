@@ -6,6 +6,36 @@ Format: [verzija] - YYYY-MM-DD
 
 ---
 
+## [v4.6] - 2026-07-17
+
+### Spremenjeno — čista karta (HUD) in glavna tipka stroja
+
+- **Karta čez cel ekran**: okvirčki umaknjeni — hitrost/ha kot velike številke,
+  parcela/stroj/statusi in spodnja statistika kot tekst z obrobo direktno čez
+  mapo ("podnapisi"). Ostanejo samo meni, stranski gumbi in tri velike tipke.
+- **STROJ DELA/STOJI je zdaj glavna tipka** (levo spodaj, največja): med sejo
+  z njo ročno preklapljaš barvanje (brez BLE); z BLE kaže stanje iz stroja
+  (DELA/MIRUJE/DVIGNJEN/ALARM). Pred sejo je ista tipka "Začni".
+
+### Dodano — operacije in stroji po meri
+
+- **Custom operacije**: Nastavitve → Operacije → Dodaj (ime, enota, barvanje
+  ob aktivnem stroju ali samo pot). Uporabno za mulčenje, valjanje, karkoli.
+- **Stroji z ekonomiko**: vsak stroj (tudi nov, npr. Avto) dobi delovno širino,
+  lastno ceno €/h, porabo l/h, ceno goriva in storitveno ceno €/ha.
+- **Statistika stroja** (tap na stroj): sej, ure, efektivne ure (dejansko delo),
+  ha, km, povprečna delovna hitrost, storilnost ha/h, ocena goriva in stroškov,
+  strošek €/ha, storitvena vrednost opravljenega dela.
+- **Prevoz riše vidnejšo črto** v svoji barvi (dostava s strojem ali avtom —
+  šteje km in ure).
+
+### Tehnično
+
+- `allOperations()/allMachines()` (vgrajeni + uporabniški), `appForm` dialog,
+  `APP_CACHE` v15
+
+---
+
 ## [v4.5] - 2026-07-17
 
 ### Dodano — trije jasni načini vožnje

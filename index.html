@@ -55,7 +55,7 @@
       </div>
       <div style="flex:1">
         <div class="home-title">AGRO<em>TRACKER</em></div>
-        <div class="home-sub">GPS vodenje · sledenje · evidenca — v4.5</div>
+        <div class="home-sub">GPS vodenje · sledenje · evidenca — v4.6</div>
       </div>
       <button class="iconbtn circle" id="homeHistoryBtn" title="Zgodovina"><svg class="icon"><use href="#i-folder"/></svg></button>
       <button class="iconbtn circle" id="homeSettingsBtn" title="Nastavitve"><svg class="icon"><use href="#i-sliders"/></svg></button>
@@ -103,20 +103,19 @@
   <section id="view-map" class="view">
     <div id="map"></div>
 
-    <div class="map-topbar glass">
-      <div class="row">
-        <button class="iconbtn" id="mapMenuBtn"><svg class="icon"><use href="#i-menu"/></svg></button>
-        <div class="titlewrap">
-          <div class="title" id="mapParcelName">—</div>
-          <div class="subtitle" id="mapMachineName">—</div>
-        </div>
-        <div style="width:44px"></div>
+    <button class="iconbtn glass" id="mapMenuBtn" style="position:absolute;left:8px;top:calc(env(safe-area-inset-top,0px) + 8px);z-index:12"><svg class="icon"><use href="#i-menu"/></svg></button>
+
+    <!-- HUD: tekst z obrobo direktno čez mapo (brez okvirjev) -->
+    <div class="hud hud-top">
+      <div class="hud-big">
+        <span id="speedVal">0,0</span><small>km/h</small>
+        <span class="hud-gap"></span>
+        <span id="doneVal">0,000</span><small>ha</small>
       </div>
-      <div class="stats">
-        <div class="stat"><div class="label">Hitrost</div><div class="value"><span id="speedVal">0,0</span><span class="unit">km/h</span></div></div>
-        <div class="stat"><div class="label">Danes</div><div class="value"><span id="doneVal">0,000</span><span class="unit">ha</span></div></div>
-        <div class="stat"><div class="label">Širina</div><div class="value"><span id="widthVal">3,0</span><span class="unit">m</span></div></div>
-        <div class="stat"><div class="label">Čas</div><div class="value" id="durVal">0s</div></div>
+      <div class="hud-line"><span id="mapParcelName">—</span></div>
+      <div class="hud-line sm"><span id="mapMachineName">—</span></div>
+      <div class="hud-line tiny">
+        <span id="gpsPill" class="hud-stat">Brez GPS</span><span class="hud-dot">·</span><span id="blePill" class="hud-stat">Brez stroja</span><span class="hud-dot">·</span><span id="onlinePill" class="hud-stat">—</span><span class="hud-dot">·</span><span id="trackingBadge" class="hud-stat off">Ustavljeno</span>
       </div>
     </div>
 
@@ -131,12 +130,6 @@
       <div class="lb-dots right" id="lbDotsR"></div>
     </div>
 
-    <div class="status-pills">
-      <span class="pill" id="gpsPill"><span class="dot"></span>Brez GPS</span>
-      <span class="pill" id="blePill"><span class="dot"></span>Brez stroja</span>
-      <span class="pill" id="onlinePill"><span class="dot"></span>—</span>
-    </div>
-
     <div class="sidecontrols">
       <button class="iconbtn glass" id="mapCenterBtn" title="Centriraj na vozilo (beleženje teče vedno)"><svg class="icon"><use href="#i-crosshair"/></svg></button>
       <button class="iconbtn glass" id="mapTerrainBtn" title="Satelit / zemljevid"><svg class="icon"><use href="#i-globe"/></svg></button>
@@ -144,32 +137,17 @@
       <button class="iconbtn glass ab" id="mapAbBtn" title="AB vodilna linija">A·B</button>
     </div>
 
-    <div class="map-bottom glass">
-      <div class="map-bottom-head">
-        <div>
-          <div style="font-weight:700;font-size:14px">Sledenje dela</div>
-          <div style="font-size:11px;color:var(--muted)">GPS vir: <span id="gpsAccuracy">—</span></div>
-        </div>
-        <div id="trackingBadge" class="badge off">Ustavljeno</div>
+    <!-- spodnja statistika kot tekst čez mapo -->
+    <div class="hud hud-bottom">
+      <div class="hud-line sm">
+        <span id="pctVal">—</span><span class="hud-dot">·</span>preostalo <span id="remainVal">—</span> ha<span class="hud-dot">·</span>še ~<span id="etaVal">—</span><span class="hud-dot">·</span><span id="passesVal">0</span> preh.<span class="hud-dot">·</span><span id="durVal">0s</span><span class="hud-dot">·</span><span id="widthVal">3,0</span> m<span class="hud-dot">·</span>GPS <span id="gpsAccuracy">—</span>
       </div>
-      <div class="actions">
-        <button id="startBtn" class="bigbtn primary">Začni</button>
-        <button id="pauseBtn" class="bigbtn pauseb" disabled>Pavza</button>
-        <button id="stopBtn"  class="bigbtn stop"   disabled>Shrani</button>
-      </div>
-      <div class="progress">
-        <div class="rowline" style="margin:0">
-          <span style="font-size:12px;color:var(--muted)">Napredek na parceli</span>
-          <strong id="pctVal">—</strong>
-        </div>
-        <div class="progressbar"><div class="progressfill" id="progressFill"></div></div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px">
-          <div class="stat"><div class="label">Prehodi</div><div class="value" id="passesVal">0</div></div>
-          <div class="stat"><div class="label">Preostalo</div><div class="value"><span id="remainVal">—</span><span class="unit">ha</span></div></div>
-          <div class="stat"><div class="label">Še ~</div><div class="value" id="etaVal">—</div></div>
-          <div class="stat" id="machineStateBox" style="cursor:pointer"><div class="label">Stroj (tap)</div><div class="value" style="font-size:13px"><span id="machineState">—</span></div></div>
-        </div>
-      </div>
+    </div>
+
+    <div class="map-actions">
+      <button id="startBtn" class="bigbtn primary">Začni</button>
+      <button id="pauseBtn" class="bigbtn pauseb" disabled>Pavza</button>
+      <button id="stopBtn"  class="bigbtn stop"   disabled>Shrani</button>
     </div>
 
     <!-- Drawer -->
@@ -275,6 +253,20 @@
     </div>
 
     <div class="card">
+      <h3>Operacije</h3>
+      <div class="hint">Poleg vgrajenih lahko dodaš svoje tipe dela (ime, enota, barva, način barvanja).</div>
+      <div id="settingsOpsList"></div>
+      <button class="minibtn" id="settingsAddOpBtn" style="width:100%;margin-top:8px">Dodaj operacijo</button>
+    </div>
+
+    <div class="card">
+      <h3>Stroji</h3>
+      <div class="hint">Širina, lastna cena (€/h, €/ha, gorivo) in storitvena cena — za izračun stroškov in vrednosti opravljenega dela. Tap na stroj za statistiko.</div>
+      <div id="settingsMachinesList"></div>
+      <button class="minibtn" id="settingsAddMachineBtn" style="width:100%;margin-top:8px">Dodaj stroj / vozilo</button>
+    </div>
+
+    <div class="card">
       <h3>Prikaz</h3>
       <label class="toggle"><span>Dnevni način (svetla tema za sonce)</span><input type="checkbox" id="settingsDayMode"></label>
     </div>
@@ -324,7 +316,7 @@
     <div class="card">
       <h3>O aplikaciji</h3>
       <div class="note">
-        AgroTracker v4.5 — GPS vodenje (AB linije + lightbar), 2D/3D karta s terenom, sledenje obdelanim površinam in GERK evidenca opravil.<br>
+        AgroTracker v4.6 — GPS vodenje (AB linije + lightbar), 2D/3D karta s terenom, sledenje obdelanim površinam in GERK evidenca opravil.<br>
         Povezava z ESP32 modulom preko Web Bluetooth.<br><br>
         <strong>Brskalnik:</strong> <span id="settingsBrowser" class="small muted"></span><br>
         <strong>Nameščeno:</strong> <span id="settingsCacheVer" class="small muted">—</span>
@@ -332,6 +324,8 @@
       <button class="minibtn" id="settingsUpdateBtn" style="width:100%;margin-top:10px">Preveri posodobitev</button>
     </div>
   </section>
+
+  <div style="display:none"><div id="progressFill"></div><span id="machineState"></span></div>
 
   <!-- ========== TOAST, MODAL, DIALOG ========== -->
   <div id="toast" class="toast">Pripravljeno</div>
