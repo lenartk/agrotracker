@@ -6,6 +6,26 @@ Format: [verzija] - YYYY-MM-DD
 
 ---
 
+## [v5.1] - 2026-07-17
+
+### Dodano — lokacijski izvozi količin (za druge programe)
+
+- **Odmerek se beleži na vsak trak** pokritosti (stripMeta) — ne več le povprečje.
+- **Izvoz poročila parcele**: Zgodovina → izberi parcelo → "Izvozi poročilo
+  parcele": GeoJSON s pokritostjo vseh sej, kjer ima vsak trak datum, operacijo,
+  odmerek (rate), površino in količino (amount); parcela nosi povzetek po
+  operacijah (ha, količina, enota, št. sej) + GERK_PID. Odpre se v QGIS ipd.
+- **Analiza območja**: meni na karti → "Analiza območja" → tapkaš oglišča
+  poljubnega dela parcele → takoj vidiš, koliko je bilo na tej površini
+  narejenega po operacijah (ha in količina, npr. kg gnojila) → izvoz GeoJSON.
+
+### Tehnično
+
+- `collectUsage` (trak: površina × odmerek; starejše seje: povprečje seje),
+  map source `sel`; `APP_CACHE` v17
+
+---
+
 ## [v5.0] - 2026-07-17
 
 ### Dodano — geometrija priključka (asimetrični stroji)

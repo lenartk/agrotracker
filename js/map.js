@@ -55,6 +55,7 @@ export class MapController {
           drive:   { type: 'geojson', data: FC() },
           impl:    { type: 'geojson', data: FC() },
           overlay: { type: 'geojson', data: FC() },
+          sel:     { type: 'geojson', data: FC() },
           cov:     { type: 'geojson', data: FC() },
           guide:   { type: 'geojson', data: FC() }
         },
@@ -93,7 +94,11 @@ export class MapController {
             filter: ['==', ['get', 'active'], 1],
             paint: { 'line-color': '#f59e0b', 'line-width': 4, 'line-opacity': 0.95 } },
           { id: 'impl-line', type: 'line', source: 'impl',
-            paint: { 'line-color': '#facc15', 'line-width': 2, 'line-opacity': 0.9 } }
+            paint: { 'line-color': '#facc15', 'line-width': 2, 'line-opacity': 0.9 } },
+          { id: 'sel-fill', type: 'fill', source: 'sel',
+            paint: { 'fill-color': '#38bdf8', 'fill-opacity': 0.18 } },
+          { id: 'sel-line', type: 'line', source: 'sel',
+            paint: { 'line-color': '#38bdf8', 'line-width': 2.5, 'line-dasharray': [3, 2] } }
         ]
       }
     });
@@ -396,6 +401,19 @@ export class MapController {
       type: 'Feature', properties: {},
       geometry: { type: 'LineString', coordinates: ring }
     }])));
+  }
+
+  // Ročno narisano območje za analizo (točke [[lat,lng], ...])
+  setSelection(pts){
+    if (!pts || pts.length < 2){
+      this._run(() => this.map.getSource('sel').setData(FC()));
+      return;
+    }
+    const ring = pts.map(p => [p[1], p[0]]);
+    const feat = pts.length >= 3
+      ? { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring.concat([ring[0]])] } }
+      : { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: ring } };
+    this._run(() => this.map.getSource('sel').setData(FC([feat])));
   }
 
   setOverlay(features){

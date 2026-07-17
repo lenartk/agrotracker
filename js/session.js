@@ -27,6 +27,7 @@ export class Session {
 
     this.track = [];              // seznam GPS točk
     this.strips = [];              // seznam poligonov (lat-lng vogali)
+    this.stripMeta = [];           // vzporedno s strips: {f: odmerek ob barvanju}
     this.abLine = null;           // {a:{lat,lng}, b:{lat,lng}} — AB vodilna linija, če je bila nastavljena
     this.coveredHa = 0;
     this.distanceM = 0;
@@ -138,6 +139,7 @@ export class Session {
         stripCoords = createStrip(paintFrom, paintPt, widthM, latOffM);
         if (stripCoords){
           this.strips.push(stripCoords);
+          this.stripMeta.push({ f: flow ?? null });
           const pp2 = implPt || point;
           const segDx = (pp2.lng - paintFrom.lng) * 111320 * Math.cos(paintFrom.lat * Math.PI/180);
           const segDy = (pp2.lat - paintFrom.lat) * 111320;
@@ -196,6 +198,7 @@ export class Session {
       abLine: this.abLine,
       track: this.track,
       strips: this.strips,
+      stripMeta: this.stripMeta,
       coveredHa: this.coveredHa,
       distanceM: this.distanceM,
       activeDistanceM: this.activeDistanceM,

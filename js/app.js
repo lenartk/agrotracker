@@ -19,7 +19,8 @@ import {
 } from './storage.js';
 import {
   featureHa, bboxOfFeature, centroidOfFeature, pointInFeature,
-  formatDistance, formatDuration, fmtNum, offsetBack, trailedFollow, polygonAreaM2
+  formatDistance, formatDuration, fmtNum, offsetBack, trailedFollow, polygonAreaM2,
+  pointInRing
 } from './geo.js';
 import {
   tilesForParcels, downloadTiles, tileCacheStats, clearTileCache, estimateTileCount
@@ -383,6 +384,181 @@ function overlapMarkAndCheck(from, to){
   }
   if (overlap) _overlapHits++;
   return overlap;
+}
+
+// ============ IZVOZ PO PARCELI / ANALIZA OBMOČJA ============
+// "Koliko gnojila je padlo na to površino" — po parceli ali narisanem delu.
+// Količina traku = površina traku (ha) × odmerek ob barvanju (stripMeta.f);
+// za starejše seje brez stripMeta vzamemo povprečje seje.
+
+function quadAreaM2(q){
+  const ring = q.map(p => [p[1], p[0]]);
+  ring.push(ring[0]);
+  return polygonAreaM2(ring);
+}
+
+function sessionAvgRate(s){
+  const vals = (s.track || []).filter(p => p.active && p.flow != null).map(p => p.flow);
+  if (!vals.length) return null;
+  return vals.reduce((x, y) => x + y, 0) / vals.length;
+}
+
+// zbere uporabo po operacijah za trakove, ki ustrezajo filtru (fn(quad, i, s) -> bool)
+function collectUsage(sessions, stripFilter){
+  const byOp = {};
+  const feats = [];
+  for (const s of sessions){
+    const avg = sessionAvgRate(s);
+    const unit = s.operation?.unit || '';
+    (s.strips || []).forEach((q, i) => {
+      if (stripFilter && !stripFilter(q, i, s)) return;
+      const areaHa = quadAreaM2(q) / 10000;
+      const rate = s.stripMeta?.[i]?.f ?? avg;
+      const amount = rate != null ? areaHa * rate : null;
+      const key = s.operation?.id || 'custom';
+      byOp[key] = byOp[key] || { name: s.operation?.name || '?', unit, ha: 0, amount: 0, hasRate: false, sessions: new Set() };
+      byOp[key].ha += areaHa;
+      if (amount != null){ byOp[key].amount += amount; byOp[key].hasRate = true; }
+      byOp[key].sessions.add(s.id);
+      feats.push({
+        type: 'Feature',
+        properties: {
+          kind: 'coverage', operation: s.operation?.name, operationId: s.operation?.id,
+          date: new Date(s.startedAt).toISOString().slice(0, 10),
+          sessionId: s.id, gerkPid: s.parcel?.gerkPid ?? null,
+          areaHa: +areaHa.toFixed(5),
+          rate: rate != null ? +rate.toFixed(2) : null,
+          amount: amount != null ? +amount.toFixed(3) : null,
+          unit
+        },
+        geometry: { type: 'Polygon', coordinates: [q.map(p => [p[1], p[0]]).concat([[q[0][1], q[0][0]]])] }
+      });
+    });
+  }
+  return { byOp, feats };
+}
+
+function usageSummaryHtml(byOp){
+  const rows = Object.values(byOp).map(o => {
+    const amountTxt = o.hasRate ? `${fmtNum(o.amount, 1)} ${o.unit.replace('/ha', '') || ''}` : '—';
+    return `<div class="rowline"><span class="small">${escapeHtml(o.name)}</span>
+      <strong>${fmtNum(o.ha, 3)} ha · ${amountTxt}</strong></div>`;
+  }).join('');
+  return rows || '<div class="small muted">Na tem območju ni zabeleženega dela.</div>';
+}
+
+async function exportParcelReport(parcelId){
+  const all = await savedSessions();
+  const mine = all.filter(s => s.parcel?.id === parcelId);
+  if (!mine.length){ toast('Za to parcelo ni sej.'); return; }
+  const parcel = mine[0].parcel;
+  const { byOp, feats } = collectUsage(mine, null);
+  const totals = {};
+  Object.entries(byOp).forEach(([k, o]) => {
+    totals[k] = { operacija: o.name, ha: +o.ha.toFixed(3),
+                  kolicina: o.hasRate ? +o.amount.toFixed(2) : null,
+                  enota: o.unit, sej: o.sessions.size };
+  });
+  const fc = {
+    type: 'FeatureCollection',
+    features: [
+      ...(parcel.feature ? [{
+        type: 'Feature',
+        properties: { kind: 'parcel', name: parcel.name, gerkPid: parcel.gerkPid ?? null,
+                      ha: parcel.ha, totals },
+        geometry: parcel.feature.geometry
+      }] : []),
+      ...feats
+    ]
+  };
+  const blob = new Blob([JSON.stringify(fc)], { type: 'application/geo+json' });
+  downloadBlob(blob, `parcela-${(parcel.gerkPid || parcel.name || 'izvoz').toString().replace(/\s+/g, '_')}-porocilo.geojson`);
+  await appInfo('Izvoženo: pokritost z odmerki po trakovih + povzetek po operacijah v lastnostih parcele. Uvozi v QGIS/drug program.', 'Izvoz parcele');
+}
+
+// --- risanje območja za analizo ---
+let _selPts = null;
+let _selClickBound = null;
+
+function startAreaAnalysis(){
+  if (state.session && state.session.state === 'running'){
+    appInfo('Med aktivno sejo analiza ni na voljo.', 'Seja teče');
+    return;
+  }
+  ensureMap();
+  showView('map');
+  _selPts = [];
+  state.map.setFollow(false);
+  const start = $('#startBtn'), pause = $('#pauseBtn'), stop = $('#stopBtn');
+  start.textContent = 'Razveljavi točko';
+  start.className = 'bigbtn secondary';
+  start.disabled = false;
+  start.onclick = () => { _selPts.pop(); state.map.setSelection(_selPts); };
+  pause.textContent = 'Zaključi';
+  pause.className = 'bigbtn primary';
+  pause.disabled = false;
+  pause.onclick = () => finishAreaAnalysis();
+  stop.textContent = 'Prekliči';
+  stop.className = 'bigbtn stop';
+  stop.disabled = false;
+  stop.onclick = () => exitAreaAnalysis();
+  _selClickBound = (e) => {
+    _selPts.push([e.lngLat.lat, e.lngLat.lng]);
+    state.map.setSelection(_selPts);
+    navigator.vibrate?.(15);
+  };
+  state.map.map.on('click', _selClickBound);
+  $('#mapParcelName').textContent = 'ANALIZA: tapkaj oglišča območja';
+  toast('Tapni po karti oglišča območja, nato Zaključi.', 4000);
+}
+
+async function finishAreaAnalysis(){
+  if (!_selPts || _selPts.length < 3){ toast('Vsaj 3 točke.'); return; }
+  const ring = _selPts.map(p => [p[1], p[0]]); // [lng,lat] za pointInRing
+  const all = await savedSessions();
+  const { byOp, feats } = collectUsage(all, (q) => {
+    const c = stripCentroid(q);
+    return pointInRing({ lat: c.lat, lng: c.lng }, ring);
+  });
+  const selRing = ring.concat([ring[0]]);
+  const areaHa = polygonAreaM2(selRing) / 10000;
+  const body = usageSummaryHtml(byOp);
+  $('#dlgTitle').textContent = 'Analiza območja (' + fmtNum(areaHa, 2) + ' ha)';
+  $('#dlgMsg').innerHTML = body;
+  const ok = $('#dlgOk'), cancelBtn = $('#dlgCancel'), scrim = $('#dlgScrim');
+  ok.textContent = 'Izvozi GeoJSON';
+  ok.className = 'minibtn';
+  cancelBtn.style.display = '';
+  cancelBtn.textContent = 'Zapri';
+  const close = () => { scrim.classList.remove('open'); $('#dlgMsg').innerHTML = ''; cancelBtn.textContent = 'Prekliči'; };
+  ok.onclick = () => {
+    const totals = {};
+    Object.entries(byOp).forEach(([k, o]) => {
+      totals[k] = { operacija: o.name, ha: +o.ha.toFixed(3),
+                    kolicina: o.hasRate ? +o.amount.toFixed(2) : null, enota: o.unit };
+    });
+    const fc = { type: 'FeatureCollection', features: [
+      { type: 'Feature', properties: { kind: 'selection', areaHa: +areaHa.toFixed(3), totals },
+        geometry: { type: 'Polygon', coordinates: [selRing] } },
+      ...feats
+    ]};
+    downloadBlob(new Blob([JSON.stringify(fc)], { type: 'application/geo+json' }),
+      'obmocje-porocilo.geojson');
+    close();
+    exitAreaAnalysis();
+  };
+  cancelBtn.onclick = () => { close(); };
+  scrim.onclick = (e) => { if (e.target === scrim) close(); };
+  scrim.classList.add('open');
+}
+
+function exitAreaAnalysis(){
+  if (_selClickBound){ state.map.map.off('click', _selClickBound); _selClickBound = null; }
+  _selPts = null;
+  state.map.setSelection(null);
+  setTrackingUI('idle');
+  wireMapButtons();
+  $('#mapParcelName').textContent = '—';
 }
 
 // ============ POPRAVLJANJE SEJ (prikaz + radialni brisalec) ============
@@ -1172,6 +1348,7 @@ function renderDrawer(){
   $$('#drawerGpsRadios input[type=radio]').forEach(r => {
     r.onchange = () => { if (r.checked) setGpsSource(r.value); };
   });
+  $('#drawerAreaBtn').onclick = () => { closeDrawer(); startAreaAnalysis(); };
   $('#drawerAddGerkBtn').onclick = async () => {
     closeDrawer();
     await addGerkAtCurrentPosition();
@@ -1857,6 +2034,11 @@ async function renderHistory(){
   $('#historySummary').textContent = sessions.length
     ? `${sessions.length} sej • ${fmtNum(sumHa, 1)} ha • ${formatDuration(sumMs)}`
     : '—';
+  const pb = $('#historyParcelExportBtn');
+  if (pb){
+    pb.style.display = _historyParcelFilter ? '' : 'none';
+    pb.onclick = () => exportParcelReport(_historyParcelFilter);
+  }
 
   if (!sessions.length){
     list.innerHTML = `

@@ -2,7 +2,7 @@
 
 Sledenje obdelanim površinam na kmetiji. PWA (telefon + PC), ESP32 modul na stroju, GPS + BLE + RS485.
 
-**Verzija:** v5.0 (julij 2026)
+**Verzija:** v5.1 (julij 2026)
 **Repo:** `github.com/lenartk/agrotracker`
 **Live:** `https://lenartk.github.io/agrotracker/`
 **Status:** v3.1 deployed na GitHub Pages — terenski test v teku (GPS potrjen, drift odpravljen z glajenjem)
