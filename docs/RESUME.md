@@ -1,6 +1,6 @@
 # AgroTracker — RESUME (hitri vstop po restartu)
 
-Zadnja posodobitev: 2026-07-17, verzija **v5.2** (SW cache v18), live na
+Zadnja posodobitev: 2026-07-17, verzija **v5.2.1** (SW cache v19), live na
 `https://lenartk.github.io/agrotracker/`.
 
 ## Kaj je AgroTracker
@@ -66,12 +66,13 @@ kmetije (KMG-MID **100220160**, kraška regija, pretežno travniki + njive).
 - Firmware: `~/.platformio/penv/bin/pio run -e esp32dev` (+ CAN: `PLATFORMIO_BUILD_FLAGS="-D CAN_ENABLED=1"`).
 
 ## ODPRTE NALOGE (glej memory agrotracker_todo)
-1. **Grafična dodelava stroja pri izbiri širine** — IZRECEN opomnik uporabnika:
-   lepši traktor+priključek prikaz (zdaj preprost `machinePreviewSvg` v editMachine).
-2. **RS485 TX na bus** za predpisne karte (variabilni odmerek dejansko krmili
+1. **RS485 TX na bus** za predpisne karte (variabilni odmerek dejansko krmili
    sejalnico) — čaka teren; rabi TX modula + varen okvir v sejalnica firmware.
-3. **ISOBUS/CAN** test na pravem traktorju (transceiver SN65HVD230, CAN_ENABLED).
-4. Terenski test z RTK (geometrija priključka pride do izraza).
+2. **ISOBUS/CAN** test na pravem traktorju (transceiver SN65HVD230, CAN_ENABLED).
+3. Terenski test z RTK (geometrija priključka pride do izraza).
+
+(v5.2.1 zaključil grafiko predogleda stroja — machinePreviewSvg: traktor+priklop,
+kotirne črte, pravilna orientacija, vejica v vnosu, simetrični fallback iz width.)
 
 ## Komunikacija
 Slovenščina, sproščeno, inženirsko ozadje. Kratki odgovori, konkretni naslednji
