@@ -1,6 +1,6 @@
 # AgroTracker — RESUME (hitri vstop po restartu)
 
-Zadnja posodobitev: 2026-07-17, verzija **v5.3** (SW cache v20), live na
+Zadnja posodobitev: 2026-09-16, verzija **v5.4** (SW cache v21), live na
 `https://lenartk.github.io/agrotracker/`.
 
 ## Kaj je AgroTracker
@@ -37,6 +37,7 @@ kmetije (KMG-MID **100220160**, kraška regija, pretežno travniki + njive).
   `sejalnica_proto.h` = kopija sejalnica `shared/rs485_proto.h`.
 
 ## Ključne funkcije po verzijah (kratko)
+- v5.4: terenski povzetek setve/materiala — ha, dejanska količina (površina × odmerek), dejanski/ciljni odmerek, efektivni čas, ha/h; zgodovina in izvozi uporabljajo iste metrike. Lokalni `?demo=1` doda samo razvojno 30-min sejo.
 - v3.x: AB vodenje+lightbar, prejšnja pokritost, sezona/CSV evidenca, sejalnica RS485.
 - v4.0: MapLibre 2D/3D teren; GERK (gerk_extract.py + Action + gumb).
 - v4.3–4.5: Google Maps follow (drag izklopi centriranje, NE beleženja!); heatmap

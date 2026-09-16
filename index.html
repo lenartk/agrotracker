@@ -55,7 +55,7 @@
       </div>
       <div style="flex:1">
         <div class="home-title">AGRO<em>TRACKER</em></div>
-        <div class="home-sub">GPS vodenje · sledenje · evidenca — v5.3</div>
+        <div class="home-sub">GPS vodenje · sledenje · evidenca — v5.4</div>
       </div>
       <button class="iconbtn circle" id="homeHistoryBtn" title="Zgodovina"><svg class="icon"><use href="#i-folder"/></svg></button>
       <button class="iconbtn circle" id="homeSettingsBtn" title="Nastavitve"><svg class="icon"><use href="#i-sliders"/></svg></button>
@@ -113,7 +113,8 @@
         <span id="doneVal">0,000</span><small>ha</small>
       </div>
       <div class="hud-line"><span id="mapParcelName">—</span></div>
-      <div class="hud-line sm"><span id="mapMachineName">—</span> <span id="rxTarget" class="hud-stat warn"></span></div>
+      <div class="hud-line sm"><span id="mapMachineName">—</span> <span id="setTarget" class="hud-stat ok"></span> <span id="rxTarget" class="hud-stat warn"></span></div>
+      <div class="hud-line sm field-summary" id="fieldSummary">—</div>
       <div class="hud-line tiny">
         <span id="gpsPill" class="hud-stat">Brez GPS</span><span class="hud-dot">·</span><span id="blePill" class="hud-stat">Brez stroja</span><span class="hud-dot">·</span><span id="onlinePill" class="hud-stat">—</span><span class="hud-dot">·</span><span id="trackingBadge" class="hud-stat off">Ustavljeno</span>
       </div>
@@ -140,7 +141,7 @@
     <!-- spodnja statistika kot tekst čez mapo -->
     <div class="hud hud-bottom">
       <div class="hud-line sm">
-        <span id="pctVal">—</span><span class="hud-dot">·</span>preostalo <span id="remainVal">—</span> ha<span class="hud-dot">·</span>še ~<span id="etaVal">—</span><span class="hud-dot">·</span><span id="passesVal">0</span> preh.<span class="hud-dot">·</span><span id="durVal">0s</span><span class="hud-dot">·</span><span id="widthVal">3,0</span> m<span class="hud-dot">·</span>GPS <span id="gpsAccuracy">—</span>
+        <span id="pctVal">—</span><span class="hud-dot">·</span>preostalo <span id="remainVal">—</span> ha<span class="hud-dot">·</span>še ~<span id="etaVal">—</span><span class="hud-dot">·</span>storilnost <span id="workRateVal">—</span> ha/h<span class="hud-dot">·</span><span id="durVal">0s</span><span class="hud-dot">·</span><span id="widthVal">3,0</span> m<span class="hud-dot">·</span>GPS <span id="gpsAccuracy">—</span>
       </div>
     </div>
 
@@ -166,7 +167,8 @@
           <div class="rowline"><span class="small muted">Parcela</span><strong id="drawerParcel">—</strong></div>
           <div class="rowline"><span class="small muted">Širina</span><strong id="drawerWidth">—</strong></div>
           <div class="rowline"><span class="small muted">GPS vir</span><strong id="drawerGpsSource">—</strong></div>
-          <div class="rowline"><span class="small muted">Pretok</span><strong><span id="flowVal">—</span></strong></div>
+          <div class="rowline"><span class="small muted" id="flowLabel">Dejanski odmerek</span><strong><span id="flowVal">—</span></strong></div>
+          <div class="rowline"><span class="small muted">Porabljeno</span><strong><span id="drawerApplied">—</span></strong></div>
           <div class="rowline"><span class="small muted">Obrati (CAN)</span><strong><span id="rpmVal">—</span></strong></div>
           <div class="rowline"><span class="small muted">Poraba (CAN)</span><strong><span id="fuelLhVal">—</span></strong></div>
         </div>
@@ -328,7 +330,7 @@
     <div class="card">
       <h3>O aplikaciji</h3>
       <div class="note">
-        AgroTracker v5.3 — GPS vodenje (AB linije + lightbar), 2D/3D karta s terenom, sledenje obdelanim površinam in GERK evidenca opravil.<br>
+        AgroTracker v5.4 — GPS vodenje (AB linije + lightbar), 2D/3D karta s terenom, sledenje obdelanim površinam in GERK evidenca opravil.<br>
         Povezava z ESP32 modulom preko Web Bluetooth.<br><br>
         <strong>Brskalnik:</strong> <span id="settingsBrowser" class="small muted"></span><br>
         <strong>Nameščeno:</strong> <span id="settingsCacheVer" class="small muted">—</span>

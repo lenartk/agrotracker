@@ -32,7 +32,12 @@ export class Session {
     this.coveredHa = 0;
     this.distanceM = 0;
     this.activeDistanceM = 0;     // razdalja, ko je stroj aktiven (requiresActive)
-    this.flowTotal = null;        // opcijski seštevek pretoka
+    this.flowTotal = null;        // legacy seštevek; za količino materiala uporabljamo appliedAmount
+    this.appliedAmount = null;    // dejansko porabljen material (kg/l/m³/t), iz ha × dejanski odmerek
+    this.rateAreaHa = 0;          // površina, za katero imamo veljaven dejanski odmerek
+    this.targetAmount = null;     // načrtovana količina na isti podlagi (ha × set)
+    this.targetAreaHa = 0;        // površina z veljavnim ciljnim odmerkom
+    this.machineActiveMs = 0;     // čas, ko je bil stroj dejansko aktiven
     this.fuelL = null;            // porabljeno gorivo (iz CAN fuelLh), litri
     this.passes = 0;
 
@@ -82,13 +87,13 @@ export class Session {
   // widthM: trenutna širina (lahko prihaja iz BLE-ja)
   // flow: opcijsko (trenutni pretok)
   // implPt: lega delovnega centra priključka (geometrija stroja); latOffM: bočni zamik traku
-  addFix(fix, machineActive, widthM, flow, implPt = null, latOffM = 0, fuelLh = null){
+  addFix(fix, machineActive, widthM, flow, implPt = null, latOffM = 0, fuelLh = null, targetRate = null){
     const now = fix.tsMs || Date.now();
     const point = {
       t: now, lat: fix.lat, lng: fix.lng,
       spd: fix.spdKmh || 0, hdg: fix.headingDeg ?? null,
       active: machineActive ? 1 : 0, src: fix.source || null,
-      flow: flow ?? null, w: widthM
+      flow: flow ?? null, set: targetRate ?? null, w: widthM
     };
 
     // Hranimo track v vsakem primeru (tudi če ne barvamo)
@@ -99,7 +104,11 @@ export class Session {
         return { painted: false, segmentM: 0, moved: false };
       }
       this.distanceM += d;
-      if (prev.active && point.active) this.activeDistanceM += d;
+      if (prev.active && point.active){
+        this.activeDistanceM += d;
+        const dtMs = now - prev.t;
+        if (dtMs > 0 && dtMs < 10000) this.machineActiveMs += dtMs;
+      }
     }
 
     if (fuelLh != null && prev){
@@ -139,12 +148,24 @@ export class Session {
         stripCoords = createStrip(paintFrom, paintPt, widthM, latOffM);
         if (stripCoords){
           this.strips.push(stripCoords);
-          this.stripMeta.push({ f: flow ?? null });
+          this.stripMeta.push({ f: flow ?? null, set: targetRate ?? null });
           const pp2 = implPt || point;
           const segDx = (pp2.lng - paintFrom.lng) * 111320 * Math.cos(paintFrom.lat * Math.PI/180);
           const segDy = (pp2.lat - paintFrom.lat) * 111320;
           segM = Math.sqrt(segDx*segDx + segDy*segDy);
-          this.coveredHa += (segM * widthM) / 10000;
+          const stripHa = (segM * widthM) / 10000;
+          this.coveredHa += stripHa;
+          const rateUnit = this.operation?.valueUnit || '';
+          if (/\/ha$/i.test(rateUnit) && flow != null && isFinite(flow)){
+            if (this.appliedAmount == null) this.appliedAmount = 0;
+            this.appliedAmount += stripHa * flow;
+            this.rateAreaHa += stripHa;
+          }
+          if (/\/ha$/i.test(rateUnit) && targetRate != null && isFinite(targetRate)){
+            if (this.targetAmount == null) this.targetAmount = 0;
+            this.targetAmount += stripHa * targetRate;
+            this.targetAreaHa += stripHa;
+          }
           this.passes += 1;
           if (flow != null){
             if (this.flowTotal == null) this.flowTotal = 0;
@@ -204,6 +225,11 @@ export class Session {
       activeDistanceM: this.activeDistanceM,
       durationMs: this.activeMsAccum,
       flowTotal: this.flowTotal,
+      appliedAmount: this.appliedAmount,
+      rateAreaHa: this.rateAreaHa,
+      targetAmount: this.targetAmount,
+      targetAreaHa: this.targetAreaHa,
+      machineActiveMs: this.machineActiveMs,
       fuelL: this.fuelL,
       passes: this.passes
     };

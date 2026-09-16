@@ -6,6 +6,19 @@ Format: [verzija] - YYYY-MM-DD
 
 ---
 
+## [v5.4] - 2026-09-16
+
+### Dodano — terenski uporabniški povzetek
+
+- Med delom sejalnice: posejana površina, porabljeno seme, dejanski/ciljni kg/ha in storilnost ha/h.
+- Količina materiala se računa iz dejansko pobarvane površine × dejanskega odmerka, ne iz časa.
+- Zgodovina in podrobnosti sej kažejo količino, povprečni dejanski/ciljni odmerek, delež parcele, efektivni čas in hitrost.
+- CSV/GeoJSON izvoz vsebuje uporabniške količinske metrike.
+- Razvojni `?demo=1` deluje samo na localhost in doda 30-min simulirano setev; produkcije ne onesnaži.
+- Service worker cache: `agrotracker-app-v21`.
+
+---
+
 ## [v5.2] - 2026-07-17
 
 ### Spremenjeno — izbira dela in dolg pritisk

@@ -363,6 +363,7 @@ input:focus,select:focus{border-color:var(--accent)}
 .hud-line{font-size:14px;font-weight:700;margin-top:2px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hud-line.sm{font-size:12px;font-weight:600;opacity:.95}
+.field-summary{font-family:var(--mono);color:#dfffe8;font-weight:800}
 .hud-line.tiny{font-size:11px;font-weight:700;margin-top:3px}
 .hud-dot{opacity:.6;margin:0 5px}
 .hud-stat.ok{color:#7dfcae}

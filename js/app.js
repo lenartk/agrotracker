@@ -34,7 +34,7 @@ const state = {
   map: null,
   guidance: new Guidance(),
   gerkLib: null,          // FeatureCollection vseh GERK-ov območja (lazy iz IndexedDB)
-  telemetry: { active: null, width: null, flow: null, rs485ok: false, machine: null, lifted: null, alarm: 0, set: null, rpm: null, fuelLh: null },
+  telemetry: { active: null, width: null, flow: null, rs485ok: false, machine: null, lifted: null, alarm: 0, set: null, mspd: null, marea: null, rxrate: null, rpm: null, fuelLh: null },
   online: navigator.onLine,
   tileDownload: null,  // {abort, done, total} ko teče predprenos
   settings: {
@@ -247,6 +247,7 @@ async function init(){
   if (state.parcels.length === 0){
     await loadDemoParcels();
   }
+  await ensureLocalSeederDemo();
 
   // BLE events -> telemetry + UI
   ble.addEventListener('connect', (e) => {
@@ -269,6 +270,9 @@ async function init(){
     if (typeof m.lift === 'number') state.telemetry.lifted = !!m.lift;
     if (typeof m.alarm === 'number') state.telemetry.alarm = m.alarm;
     if (typeof m.set === 'number') state.telemetry.set = m.set;
+    if (typeof m.mspd === 'number') state.telemetry.mspd = m.mspd;
+    if (typeof m.marea === 'number') state.telemetry.marea = m.marea;
+    if (typeof m.rxrate === 'number') state.telemetry.rxrate = m.rxrate;
     if (typeof m.rpm === 'number') state.telemetry.rpm = m.rpm;
     if (typeof m.fuellh === 'number') state.telemetry.fuelLh = m.fuellh;
     refreshTelemetryUI();
@@ -342,6 +346,53 @@ async function init(){
   if (navigator.storage && navigator.storage.persist){
     navigator.storage.persisted().then(p => { if (!p) navigator.storage.persist(); });
   }
+}
+
+async function ensureLocalSeederDemo(){
+  const local = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
+  if (!local || new URLSearchParams(location.search).get('demo') !== '1') return;
+
+  const parcel = state.parcels.find(p => p.id === 'demo_a') || state.parcels[0];
+  if (!parcel) return;
+  const op = allOperations().seed;
+  const machine = allMachines().find(m => m.id === 'sejalnica');
+  if (!op || !machine) return;
+
+  const ses = new Session({ operation: op, machine, parcel, note: 'SIMULACIJA · 30-min test sejalnice za razvoj uporabniškega povzetka' });
+  ses.id = 'demo_sejalnica_v54';
+  const durationS = 1800;
+  const stepS = 2;
+  const start = Date.now() - durationS * 1000;
+  ses.state = 'running';
+  ses.startedAt = start;
+  ses.lastResumeAt = start;
+
+  const west = 14.49645, east = 14.50485, south = 46.04955, north = 46.05345;
+  const legM = (north - south) * 111320;
+  const colStepDeg = 15 / (111320 * Math.cos(((south + north) / 2) * Math.PI / 180));
+  const speedMps = 7.2 / 3.6;
+  let distance = 0;
+  let col = 0;
+  let northbound = true;
+
+  for (let sec = 0; sec <= durationS; sec += stepS){
+    const inTurn = (sec >= 580 && sec < 600) || (sec >= 1220 && sec < 1240);
+    const stepM = speedMps * stepS;
+    distance += stepM;
+    while (distance > legM){ distance -= legM; col += 1; northbound = !northbound; }
+    const frac = Math.max(0, Math.min(1, distance / legM));
+    const lat = northbound ? south + (north - south) * frac : north - (north - south) * frac;
+    const lng = Math.min(east, west + col * colStepDeg);
+    let actualRate = 20 * (1 + 0.012 * Math.sin(sec / 17));
+    if (sec >= 900 && sec < 960) actualRate *= 0.87;
+    const fix = { lat, lng, spdKmh: 7.2, headingDeg: northbound ? 0 : 180, tsMs: start + sec * 1000, source: 'sim' };
+    ses.addFix(fix, !inTurn, 3.0, actualRate, null, 0, null, 20.0);
+  }
+  ses.state = 'stopped';
+  ses.endedAt = start + durationS * 1000;
+  ses.activeMsAccum = durationS * 1000;
+  ses.lastResumeAt = null;
+  await saveSession(ses.toJSON());
 }
 
 async function loadDemoParcels(){
@@ -431,6 +482,54 @@ function sessionAvgRate(s){
   const vals = (s.track || []).filter(p => p.active && p.flow != null).map(p => p.flow);
   if (!vals.length) return null;
   return vals.reduce((x, y) => x + y, 0) / vals.length;
+}
+
+
+function rateBaseUnit(rateUnit){
+  const u = String(rateUnit || '').trim();
+  return /\/ha$/i.test(u) ? u.replace(/\/ha$/i, '').trim() : null;
+}
+
+function sessionUserMetrics(s){
+  const rateUnit = s.operation?.unit || '';
+  const amountUnit = rateBaseUnit(rateUnit);
+  let appliedAmount = s.appliedAmount != null && Number.isFinite(Number(s.appliedAmount)) ? Number(s.appliedAmount) : null;
+  let rateAreaHa = Number(s.rateAreaHa) || 0;
+  let targetAmount = s.targetAmount != null && Number.isFinite(Number(s.targetAmount)) ? Number(s.targetAmount) : null;
+  let targetAreaHa = Number(s.targetAreaHa) || 0;
+  let estimated = false;
+  const hasAppliedFields = s.appliedAmount !== undefined || s.rateAreaHa !== undefined;
+  const hasTargetFields = s.targetAmount !== undefined || s.targetAreaHa !== undefined;
+
+  if (amountUnit && (!hasAppliedFields || !hasTargetFields)){
+    let calcAmount = 0, calcArea = 0, calcTarget = 0, calcTargetArea = 0;
+    (s.strips || []).forEach((q, i) => {
+      const areaHa = quadAreaM2(q) / 10000;
+      const f = s.stripMeta?.[i]?.f;
+      const set = s.stripMeta?.[i]?.set;
+      if (f != null && Number.isFinite(Number(f))){ calcAmount += areaHa * Number(f); calcArea += areaHa; }
+      if (set != null && Number.isFinite(Number(set))){ calcTarget += areaHa * Number(set); calcTargetArea += areaHa; }
+    });
+    if (!hasAppliedFields && calcArea > 0){ appliedAmount = calcAmount; rateAreaHa = calcArea; }
+    if (!hasTargetFields && calcTargetArea > 0){ targetAmount = calcTarget; targetAreaHa = calcTargetArea; }
+  }
+
+  let avgRate = rateAreaHa > 0 && appliedAmount != null ? appliedAmount / rateAreaHa : null;
+  if (amountUnit && avgRate == null){
+    const fallback = sessionAvgRate(s);
+    if (fallback != null && (s.coveredHa || 0) > 0){
+      avgRate = fallback;
+      appliedAmount = fallback * (s.coveredHa || 0);
+      rateAreaHa = s.coveredHa || 0;
+      estimated = true;
+    }
+  }
+  const avgTarget = targetAreaHa > 0 && targetAmount != null ? targetAmount / targetAreaHa : null;
+  const parcelPct = s.parcel?.ha > 0 ? Math.min(100, (s.coveredHa || 0) / s.parcel.ha * 100) : null;
+  const activeMs = Number(s.machineActiveMs) > 0 ? Number(s.machineActiveMs) : Number(s.durationMs) || 0;
+  const haPerH = activeMs > 0 ? (s.coveredHa || 0) / (activeMs / 3600000) : null;
+  const avgWorkSpeed = activeMs > 0 ? ((s.activeDistanceM || 0) / 1000) / (activeMs / 3600000) : null;
+  return { rateUnit, amountUnit, appliedAmount, avgRate, avgTarget, parcelPct, activeMs, haPerH, avgWorkSpeed, estimated };
 }
 
 // zbere uporabo po operacijah za trakove, ki ustrezajo filtru (fn(quad, i, s) -> bool)
@@ -1568,7 +1667,13 @@ async function stopSession(){
   stopAutoSaveTimer();
   try {
     await state.session.persist();
-    toast('Shranjeno: ' + state.session.coveredHa.toFixed(2) + ' ha');
+    const um = sessionUserMetrics(state.session);
+    let msg = 'Shranjeno: ' + fmtNum(state.session.coveredHa, 2) + ' ha';
+    if (um.amountUnit && um.appliedAmount != null){
+      msg += ` · ${state.session.operation?.valueLabel || 'material'} ${fmtNum(um.appliedAmount, 1)} ${um.amountUnit}`;
+      if (um.avgRate != null) msg += ` · ${fmtNum(um.avgRate, 1)} ${um.rateUnit}`;
+    }
+    toast(msg, 5000);
   } catch (e){
     console.warn(e);
     toast('Napaka pri shranjevanju', 3000);
@@ -1704,7 +1809,7 @@ function onFix(fix){
     const widthM = geo.width;
     const flow = state.telemetry.flow ?? null;
     const implPt = implementPos(fix, geo);
-    const res = state.session.addFix(fix, active, widthM, flow, implPt, geo.latOff, state.telemetry.fuelLh);
+    const res = state.session.addFix(fix, active, widthM, flow, implPt, geo.latOff, state.telemetry.fuelLh, state.telemetry.set);
     // obris priključka na karti (koristno predvsem z RTK)
     if (fix.headingDeg != null && (geo.backM || geo.latOff || geo.width !== effectiveWidthM())){
       state.map.setImplementRect(implPt || fix, fix.headingDeg, geo);
@@ -1739,8 +1844,20 @@ function updateMapStats(){
   const s = state.session;
   if (!s) return;
   $('#doneVal').textContent = fmtNum(s.coveredHa, 3);
-  $('#passesVal').textContent = String(s.passes);
+  const um = sessionUserMetrics(s);
+  const workRateVal = $('#workRateVal');
+  if (workRateVal) workRateVal.textContent = um.haPerH != null ? fmtNum(um.haPerH, 2) : '—';
   $('#widthVal').textContent = fmtNum(effectiveWidthM(), 1);
+  const fieldSummary = $('#fieldSummary');
+  if (fieldSummary){
+    if (um.amountUnit){
+      const rateTxt = um.avgRate != null ? `${fmtNum(um.avgRate, 1)} ${um.rateUnit}` : `— ${um.rateUnit}`;
+      const amountTxt = um.appliedAmount != null ? `${fmtNum(um.appliedAmount, 1)} ${um.amountUnit}` : `— ${um.amountUnit}`;
+      fieldSummary.textContent = `dej. ${rateTxt} · ${s.operation?.valueLabel || 'material'} ${amountTxt}`;
+    } else {
+      fieldSummary.textContent = `${fmtNum(s.coveredHa, 3)} ha · ${formatDistance(s.distanceM || 0)}`;
+    }
+  }
   if (s.parcel){
     const pct = Math.min(100, Math.round((s.coveredHa / s.parcel.ha) * 100));
     $('#pctVal').textContent = pct + '%';
@@ -1813,9 +1930,27 @@ function refreshTelemetryUI(){
   if (document.getElementById('drawerWidth')){
     document.getElementById('drawerWidth').textContent = fmtNum(effectiveWidthM(), 1) + ' m';
   }
-  // Flow
-  if ($('#flowVal') && state.telemetry.flow != null){
-    $('#flowVal').textContent = fmtNum(state.telemetry.flow, 1);
+  // Dejanski odmerek / porabljena količina
+  const currentUnit = state.session?.operation?.unit || allOperations()[state.selectedOpId]?.valueUnit || '';
+  if ($('#flowVal')){
+    $('#flowVal').textContent = state.telemetry.flow != null
+      ? `${fmtNum(state.telemetry.flow, 1)} ${currentUnit}`.trim()
+      : '—';
+  }
+  const flowLabel = $('#flowLabel');
+  if (flowLabel) flowLabel.textContent = rateBaseUnit(currentUnit) ? 'Dejanski odmerek' : 'Pretok / vrednost';
+  const applied = $('#drawerApplied');
+  if (applied){
+    const um = state.session ? sessionUserMetrics(state.session) : null;
+    applied.textContent = um?.amountUnit && um.appliedAmount != null
+      ? `${fmtNum(um.appliedAmount, 1)} ${um.amountUnit}`
+      : '—';
+  }
+  const setEl = $('#setTarget');
+  if (setEl){
+    setEl.textContent = state.telemetry.set != null && currentUnit
+      ? `· cilj ${fmtNum(state.telemetry.set, 1)} ${currentUnit}`
+      : '';
   }
   refreshWorkButton();
   const rpmEl = $('#rpmVal');
@@ -2237,8 +2372,16 @@ async function renderHistory(){
 
   const sumHa = sessions.reduce((a, s) => a + (s.coveredHa || 0), 0);
   const sumMs = sessions.reduce((a, s) => a + (s.durationMs || 0), 0);
+  let materialSummary = '';
+  const opIds = new Set(sessions.map(s => s.operation?.id).filter(Boolean));
+  if (opIds.size === 1){
+    const metrics = sessions.map(sessionUserMetrics);
+    const unit = metrics.find(m => m.amountUnit)?.amountUnit;
+    const amount = metrics.reduce((a, m) => a + (m.amountUnit === unit && m.appliedAmount != null ? m.appliedAmount : 0), 0);
+    if (unit && amount > 0) materialSummary = ` • ${fmtNum(amount, 1)} ${unit}`;
+  }
   $('#historySummary').textContent = sessions.length
-    ? `${sessions.length} sej • ${fmtNum(sumHa, 1)} ha • ${formatDuration(sumMs)}`
+    ? `${sessions.length} sej • ${fmtNum(sumHa, 1)} ha${materialSummary} • ${formatDuration(sumMs)}`
     : '—';
   const pb = $('#historyParcelExportBtn');
   if (pb){
@@ -2259,6 +2402,14 @@ async function renderHistory(){
     const op = s.operation || {};
     const dur = formatDuration(s.durationMs || 0);
     const dist = formatDistance(s.distanceM || 0);
+    const um = sessionUserMetrics(s);
+    const hasMaterial = um.amountUnit && um.appliedAmount != null;
+    const metric2 = hasMaterial
+      ? `<div class="session-metric"><div class="v">${fmtNum(um.appliedAmount, 1)} ${um.amountUnit}</div><div class="l">${escapeHtml(op.label || 'količina')}</div></div>`
+      : `<div class="session-metric"><div class="v">${dist}</div><div class="l">pot</div></div>`;
+    const metric3 = hasMaterial && um.avgRate != null
+      ? `<div class="session-metric"><div class="v">${fmtNum(um.avgRate, 1)}</div><div class="l">${escapeHtml(um.rateUnit)}</div></div>`
+      : `<div class="session-metric"><div class="v">${um.haPerH != null ? fmtNum(um.haPerH, 2) : '—'}</div><div class="l">ha/h</div></div>`;
     return `
       <div class="session-card" data-id="${s.id}">
         <div class="session-top">
@@ -2270,9 +2421,9 @@ async function renderHistory(){
         </div>
         <div class="session-metrics">
           <div class="session-metric"><div class="v">${fmtNum(s.coveredHa || 0, 2)}</div><div class="l">ha</div></div>
-          <div class="session-metric"><div class="v">${dist}</div><div class="l">pot</div></div>
+          ${metric2}
+          ${metric3}
           <div class="session-metric"><div class="v">${dur}</div><div class="l">čas</div></div>
-          <div class="session-metric"><div class="v">${s.passes || 0}</div><div class="l">preh.</div></div>
         </div>
       </div>
     `;
@@ -2293,7 +2444,7 @@ async function openSessionDetail(id){
   const body = $('#modalBody');
   const op = s.operation || {};
   const dur = formatDuration(s.durationMs || 0);
-  const flowText = s.flowTotal != null ? s.flowTotal.toFixed(1) + ' ' + (op.unit || '') : '—';
+  const um = sessionUserMetrics(s);
   body.innerHTML = `
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
       <div class="session-icon" style="background:${op.color || '#22c55e'}22;color:${op.color || '#22c55e'};width:52px;height:52px">${svgIcon(opSvg(op.id), 'icon lg')}</div>
@@ -2306,7 +2457,13 @@ async function openSessionDetail(id){
       <div class="session-metric"><div class="v">${fmtNum(s.coveredHa || 0, 3)}</div><div class="l">ha</div></div>
       <div class="session-metric"><div class="v">${formatDistance(s.distanceM || 0)}</div><div class="l">pot</div></div>
       <div class="session-metric"><div class="v">${dur}</div><div class="l">čas</div></div>
-      <div class="session-metric"><div class="v">${s.passes || 0}</div><div class="l">preh.</div></div>
+      <div class="session-metric"><div class="v">${um.activeMs ? formatDuration(um.activeMs) : '—'}</div><div class="l">aktivno delo</div></div>
+      ${um.amountUnit && um.appliedAmount != null ? `<div class="session-metric"><div class="v">${fmtNum(um.appliedAmount, 1)} ${um.amountUnit}</div><div class="l">${escapeHtml(op.label || 'količina')}${um.estimated ? ' ~' : ''}</div></div>` : ''}
+      ${um.avgRate != null ? `<div class="session-metric"><div class="v">${fmtNum(um.avgRate, 1)}</div><div class="l">dej. ${escapeHtml(um.rateUnit)}</div></div>` : ''}
+      ${um.avgTarget != null ? `<div class="session-metric"><div class="v">${fmtNum(um.avgTarget, 1)}</div><div class="l">cilj ${escapeHtml(um.rateUnit)}</div></div>` : ''}
+      ${um.parcelPct != null ? `<div class="session-metric"><div class="v">${fmtNum(um.parcelPct, 0)} %</div><div class="l">parcele</div></div>` : ''}
+      ${um.haPerH != null ? `<div class="session-metric"><div class="v">${fmtNum(um.haPerH, 2)}</div><div class="l">ha/h med delom</div></div>` : ''}
+      ${um.avgWorkSpeed != null ? `<div class="session-metric"><div class="v">${fmtNum(um.avgWorkSpeed, 1)}</div><div class="l">km/h med delom</div></div>` : ''}
       <div class="session-metric"><div class="v">${s.machine?.name || '—'}</div><div class="l">stroj</div></div>
       <div class="session-metric"><div class="v">${s.parcel?.name || '—'}</div><div class="l">parcela</div></div>
       ${s.parcel?.gerkPid ? `<div class="session-metric"><div class="v">${s.parcel.gerkPid}</div><div class="l">GERK</div></div>` : ''}
@@ -2362,10 +2519,12 @@ async function exportSessionsCSV(){
   };
   const rows = [[
     'datum', 'zacetek', 'konec', 'trajanje_min', 'operacija', 'stroj', 'sirina_m',
-    'parcela', 'gerk_pid', 'raba', 'parcela_ha', 'obdelano_ha', 'razdalja_km', 'prehodi', 'poraba_skupaj', 'enota', 'opomba'
+    'parcela', 'gerk_pid', 'raba', 'parcela_ha', 'obdelano_ha', 'razdalja_km', 'odseki_pokritosti',
+    'kolicina_skupaj', 'enota_kolicine', 'povp_dejanski_odmerek', 'ciljni_odmerek', 'enota_odmerka', 'opomba'
   ]];
   for (const s of all){
     const d = new Date(s.startedAt);
+    const um = sessionUserMetrics(s);
     rows.push([
       d.toLocaleDateString('sl-SI'),
       d.toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' }),
@@ -2381,8 +2540,11 @@ async function exportSessionsCSV(){
       (s.coveredHa || 0).toFixed(3),
       ((s.distanceM || 0) / 1000).toFixed(2),
       s.passes || 0,
-      s.flowTotal != null ? s.flowTotal.toFixed(1) : '',
-      s.operation?.unit || '',
+      um.appliedAmount != null ? um.appliedAmount.toFixed(2) : '',
+      um.amountUnit || '',
+      um.avgRate != null ? um.avgRate.toFixed(2) : '',
+      um.avgTarget != null ? um.avgTarget.toFixed(2) : '',
+      um.rateUnit || '',
       s.note || ''
     ]);
   }
@@ -2394,6 +2556,7 @@ async function exportSessionsCSV(){
 
 function sessionToGeoJSON(s){
   const features = [];
+  const um = sessionUserMetrics(s);
   // Track kot LineString
   if (s.track && s.track.length > 1){
     features.push({
@@ -2409,8 +2572,14 @@ function sessionToGeoJSON(s){
         distanceM: s.distanceM,
         gerkPid: s.parcel?.gerkPid ?? null,
         kmgMid: s.parcel?.feature?.properties?.KMG_MID ?? null,
-        flowTotal: s.flowTotal ?? null,
-        flowUnit: s.operation?.unit || null,
+        flowTotalLegacy: s.flowTotal ?? null,
+        appliedAmount: um.appliedAmount,
+        appliedAmountUnit: um.amountUnit,
+        avgRate: um.avgRate,
+        targetRate: um.avgTarget,
+        rateUnit: um.rateUnit || null,
+        parcelPct: um.parcelPct,
+        machineActiveMs: um.activeMs || null,
         note: s.note || null,
         color: s.operation?.color
       },
