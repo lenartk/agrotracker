@@ -1,3 +1,11 @@
+## v5.4.3 — 2026-09-16
+
+- Monitor 30-min setve je prestavljen iz modala na samostojen pogled/stran.
+- Grafi so stabilni SVG: fiksna os in vnaprej izračunana krivulja; replay samo gladko odkriva podatke, zato ni preskakovanja širine/skale.
+- Med dvigom sejalnice odmerek in odklon kažeta `—`, ne lažnih 0 kg/ha.
+- Dodana vrstica napredka, večje live kartice ter jasna pavza/ponovi.
+- Service Worker cache: v24.
+
 ## v5.4.2 — 2026-09-16
 
 - 30-min primer setve je zdaj živ monitor: simulirana telemetrija se predvaja 60× hitreje.

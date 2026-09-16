@@ -210,6 +210,7 @@ const opSvg = (opId) => allOperations()[opId]?.svg || 'wrench';
 const svgIcon = (name, cls = 'icon') => `<svg class="${cls}"><use href="#i-${name}"/></svg>`;
 
 function showView(name){
+  if (state.view === 'seeder' && name !== 'seeder') stopSeederDemoMonitor();
   state.view = name;
   $$('.view').forEach(v => v.classList.remove('active'));
   const el = document.getElementById('view-' + name);
@@ -1167,93 +1168,153 @@ function wireHome(){
   $('#homeStartBtn').onclick = () => startSession();
 }
 
-let _seederDemoTimer = null;
+let _seederDemoFrame = null;
+let _seederDemoState = null;
 
 function stopSeederDemoMonitor(){
-  if (_seederDemoTimer){ clearInterval(_seederDemoTimer); _seederDemoTimer = null; }
+  if (_seederDemoFrame != null){
+    cancelAnimationFrame(_seederDemoFrame);
+    _seederDemoFrame = null;
+  }
+}
+
+function seederDemoActive(sec){
+  return !((sec >= 580 && sec < 600) || (sec >= 1220 && sec < 1240));
+}
+
+function seederDemoRate(sec){
+  let rate = 20 * (1 + 0.012 * Math.sin(sec / 17));
+  if (sec >= 900 && sec < 960) rate *= 0.87;
+  return rate;
+}
+
+function buildSeederDemoModel(){
+  const duration = 1800;
+  const finalArea = 1.106;
+  const activeTotal = 1760;
+  const areaPerActiveSec = finalArea / activeTotal;
+  const data = [{ sec: 0, active: seederDemoActive(0), rate: seederDemoRate(0), area: 0, seed: 0, activeSec: 0 }];
+  let area = 0, seed = 0, activeSec = 0;
+  for (let sec = 1; sec <= duration; sec++){
+    const active = seederDemoActive(sec);
+    const rate = seederDemoRate(sec);
+    if (active){
+      area += areaPerActiveSec;
+      seed += areaPerActiveSec * rate;
+      activeSec += 1;
+    }
+    data.push({ sec, active, rate, area, seed, activeSec });
+  }
+  return { duration, data };
+}
+
+function chartX(sec, duration){ return 50 + 530 * sec / duration; }
+function rateY(rate){ return 18 + 174 * (1 - (Math.max(16, Math.min(22, rate)) - 16) / 6); }
+function speedY(speed){ return 18 + 112 * (1 - Math.max(0, Math.min(10, speed)) / 10); }
+
+function setSeederDemoPaths(model){
+  let ratePath = '', pen = false;
+  for (let sec = 0; sec <= model.duration; sec += 2){
+    const d = model.data[sec];
+    if (!d.active){ pen = false; continue; }
+    const cmd = pen ? 'L' : 'M';
+    ratePath += `${cmd}${chartX(sec, model.duration).toFixed(2)},${rateY(d.rate).toFixed(2)} `;
+    pen = true;
+  }
+  const speedPath = `M50,${speedY(7.2).toFixed(2)} L580,${speedY(7.2).toFixed(2)}`;
+  $('#sdRatePath').setAttribute('d', ratePath.trim());
+  $('#sdSpeedPath').setAttribute('d', speedPath);
+}
+
+function updateSeederDemoMonitor(simSec){
+  const st = _seederDemoState;
+  if (!st) return;
+  const sec = Math.max(0, Math.min(st.model.duration, simSec));
+  const i = Math.floor(sec);
+  const d = st.model.data[i];
+  const active = d.active;
+  const rate = d.rate;
+  const dev = (rate / 20 - 1) * 100;
+  const fmtClock = v => `${String(Math.floor(v / 60)).padStart(2, '0')}:${String(Math.floor(v % 60)).padStart(2, '0')}`;
+
+  $('#sdClock').textContent = `${fmtClock(i)} / 30:00`;
+  $('#sdRate').textContent = active ? fmtNum(rate, 1) : '—';
+  $('#sdTarget').textContent = '20,0';
+  $('#sdDev').textContent = active ? `${dev >= 0 ? '+' : ''}${fmtNum(dev, 1)} %` : '—';
+  $('#sdSpeed').textContent = '7,2';
+  $('#sdArea').textContent = fmtNum(d.area, 3);
+  $('#sdSeed').textContent = fmtNum(d.seed, 1);
+  $('#sdState').textContent = active ? 'SEJE' : 'DVIGNJENA';
+  $('#sdState').className = 'status-chip ' + (active ? 'ok' : 'warn');
+  $('#sdAvg').textContent = `povp. ${d.area > 0 ? fmtNum(d.seed / d.area, 1) : '—'} kg/ha`;
+  $('#sdHaH').textContent = `${d.activeSec > 0 ? fmtNum(d.area / (d.activeSec / 3600), 2) : '—'} ha/h`;
+
+  const frac = sec / st.model.duration;
+  const clipW = 530 * frac;
+  $('#sdProgress').style.width = `${(frac * 100).toFixed(2)}%`;
+  $('#sdRateClipRect').setAttribute('width', clipW.toFixed(2));
+  $('#sdSpeedClipRect').setAttribute('width', clipW.toFixed(2));
+  const x = chartX(sec, st.model.duration).toFixed(2);
+  $('#sdRateCursor').setAttribute('x1', x); $('#sdRateCursor').setAttribute('x2', x);
+  $('#sdSpeedCursor').setAttribute('x1', x); $('#sdSpeedCursor').setAttribute('x2', x);
+}
+
+function runSeederDemoFrame(now){
+  const st = _seederDemoState;
+  if (!st || st.paused) return;
+  st.simSec = Math.min(st.model.duration, st.baseSimSec + (now - st.baseRealMs) * 0.06);
+  updateSeederDemoMonitor(st.simSec);
+  if (st.simSec >= st.model.duration){
+    st.paused = true;
+    $('#sdPause').textContent = 'Končano';
+    _seederDemoFrame = null;
+    return;
+  }
+  _seederDemoFrame = requestAnimationFrame(runSeederDemoFrame);
+}
+
+function startSeederDemoMonitor(reset = true){
+  stopSeederDemoMonitor();
+  const model = buildSeederDemoModel();
+  if (!_seederDemoState || reset){
+    _seederDemoState = { model, simSec: 0, baseSimSec: 0, baseRealMs: performance.now(), paused: false };
+  } else {
+    _seederDemoState.model = model;
+    _seederDemoState.baseSimSec = _seederDemoState.simSec;
+    _seederDemoState.baseRealMs = performance.now();
+    _seederDemoState.paused = false;
+  }
+  setSeederDemoPaths(model);
+  updateSeederDemoMonitor(_seederDemoState.simSec);
+  $('#sdPause').textContent = 'Pavza';
+  _seederDemoFrame = requestAnimationFrame(runSeederDemoFrame);
 }
 
 function openSeederDemoPreview(){
-  stopSeederDemoMonitor();
-  const body = $('#modalBody');
-  body.innerHTML = `
-    <div class="seeder-monitor-head">
-      <div>
-        <div class="seeder-monitor-title">30-min primer setve <span class="live-chip">SIM LIVE</span></div>
-        <div class="small muted">Simulacija je 60× hitrejša: 30 min se odvrti v približno 30 s.</div>
-      </div>
-      <div class="seeder-monitor-clock" id="sdClock">00:00 / 30:00</div>
-    </div>
-    <div class="seeder-live-grid">
-      <div class="seeder-live primary"><b id="sdRate">20,0</b><small>kg/ha dejansko</small></div>
-      <div class="seeder-live"><b id="sdTarget">20,0</b><small>kg/ha cilj</small></div>
-      <div class="seeder-live"><b id="sdDev">0,0 %</b><small>odklon</small></div>
-      <div class="seeder-live"><b id="sdSpeed">7,2</b><small>km/h</small></div>
-      <div class="seeder-live"><b id="sdArea">0,000</b><small>ha posejano</small></div>
-      <div class="seeder-live"><b id="sdSeed">0,0</b><small>kg semena</small></div>
-    </div>
-    <div class="seeder-state-row"><span id="sdState" class="status-chip ok">SEJE</span><span id="sdAvg">povp. — kg/ha</span><span id="sdHaH">— ha/h</span></div>
-    <div class="seeder-chart-card"><div class="seeder-chart-title">Odmerek <span>dejanski / cilj</span></div><canvas id="sdRateChart" height="150"></canvas></div>
-    <div class="seeder-chart-card"><div class="seeder-chart-title">Hitrost <span>km/h</span></div><canvas id="sdSpeedChart" height="105"></canvas></div>
-    <div class="btn-row" style="margin-top:10px">
-      <button class="minibtn" id="sdPause">Pavza</button>
-      <button class="minibtn" id="sdRestart">Ponovi</button>
-    </div>
-    <div class="note" style="margin-top:10px">To je isti model 30-min testne seje. Ob pravi povezavi bo ta monitor preklopljen na dejanske podatke sejalnice.</div>`;
-  $('#modalScrim').classList.add('open');
-
-  const duration = 1800, activeTotal = 1760, finalArea = 1.106;
-  const areaPerActiveSec = finalArea / activeTotal;
-  const rateSeries = [], speedSeries = [];
-  for (let sec = 0; sec <= duration; sec += 2){
-    const active = !((sec >= 580 && sec < 600) || (sec >= 1220 && sec < 1240));
-    let rate = 20 * (1 + 0.012 * Math.sin(sec / 17));
-    if (sec >= 900 && sec < 960) rate *= 0.87;
-    rateSeries.push({ sec, rate: active ? rate : 0, active });
-    speedSeries.push({ sec, speed: 7.2 });
-  }
-
-  let simSec = 0, paused = false, area = 0, seed = 0, activeSec = 0;
-  let lastSec = 0;
-  const fmtClock = sec => `${String(Math.floor(sec/60)).padStart(2,'0')}:${String(Math.floor(sec%60)).padStart(2,'0')}`;
-  const draw = (canvas, pts, valueKey, minY, maxY, target = null) => {
-    if (!canvas) return;
-    const dpr = window.devicePixelRatio || 1, w = Math.max(280, canvas.clientWidth || 300), h = +canvas.getAttribute('height');
-    canvas.width = Math.round(w*dpr); canvas.height = Math.round(h*dpr);
-    const ctx = canvas.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
-    const pad = {l:34,r:8,t:10,b:20}, pw=w-pad.l-pad.r, ph=h-pad.t-pad.b;
-    ctx.strokeStyle = 'rgba(148,163,184,.22)'; ctx.lineWidth=1;
-    for (let i=0;i<4;i++){ const y=pad.t+ph*i/3; ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke(); }
-    if (target != null){ const y=pad.t+ph*(1-(target-minY)/(maxY-minY)); ctx.setLineDash([5,4]); ctx.strokeStyle='rgba(245,158,11,.9)'; ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke(); ctx.setLineDash([]); }
-    ctx.strokeStyle = 'rgba(34,197,94,.95)'; ctx.lineWidth=2; ctx.beginPath();
-    let started=false; for (const p of pts){ if (p.sec > simSec) break; const x=pad.l+pw*p.sec/duration; const v=Math.max(minY,Math.min(maxY,p[valueKey])); const y=pad.t+ph*(1-(v-minY)/(maxY-minY)); if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y); } ctx.stroke();
-    ctx.fillStyle='rgba(148,163,184,.9)'; ctx.font='10px sans-serif'; ctx.fillText(String(maxY),2,pad.t+7); ctx.fillText(String(minY),2,pad.t+ph); ctx.fillText('0',pad.l,h-4); ctx.fillText('30 min',w-pad.r-34,h-4);
-  };
-  const update = () => {
-    const now = Math.min(duration, Math.floor(simSec));
-    for (let s = lastSec + 1; s <= now; s++){
-      const active = !((s >= 580 && s < 600) || (s >= 1220 && s < 1240));
-      if (!active) continue;
-      let r = 20 * (1 + 0.012 * Math.sin(s / 17)); if (s >= 900 && s < 960) r *= 0.87;
-      const dHa = areaPerActiveSec; area += dHa; seed += dHa * r; activeSec++;
+  showView('seeder');
+  const back = $('#seederBackBtn');
+  back.onclick = () => showView('home');
+  $('#sdPause').onclick = () => {
+    const st = _seederDemoState;
+    if (!st) return;
+    if (st.simSec >= st.model.duration){ startSeederDemoMonitor(true); return; }
+    if (st.paused){
+      st.paused = false;
+      st.baseSimSec = st.simSec;
+      st.baseRealMs = performance.now();
+      $('#sdPause').textContent = 'Pavza';
+      stopSeederDemoMonitor();
+      _seederDemoFrame = requestAnimationFrame(runSeederDemoFrame);
+    } else {
+      st.simSec = Math.min(st.model.duration, st.baseSimSec + (performance.now() - st.baseRealMs) * 0.06);
+      st.paused = true;
+      stopSeederDemoMonitor();
+      updateSeederDemoMonitor(st.simSec);
+      $('#sdPause').textContent = 'Nadaljuj';
     }
-    lastSec = now;
-    const active = !((now >= 580 && now < 600) || (now >= 1220 && now < 1240));
-    let rate = 20 * (1 + 0.012 * Math.sin(now / 17)); if (now >= 900 && now < 960) rate *= 0.87;
-    const shownRate = active ? rate : 0, dev = active ? (rate/20-1)*100 : 0;
-    $('#sdClock').textContent = `${fmtClock(now)} / 30:00`;
-    $('#sdRate').textContent = fmtNum(shownRate,1); $('#sdTarget').textContent='20,0'; $('#sdDev').textContent=`${dev>=0?'+':''}${fmtNum(dev,1)} %`;
-    $('#sdSpeed').textContent='7,2'; $('#sdArea').textContent=fmtNum(area,3); $('#sdSeed').textContent=fmtNum(seed,1);
-    $('#sdState').textContent = active ? 'SEJE' : 'DVIGNJENA'; $('#sdState').className = 'status-chip ' + (active ? 'ok' : 'warn');
-    $('#sdAvg').textContent = `povp. ${area>0 ? fmtNum(seed/area,1) : '—'} kg/ha`;
-    $('#sdHaH').textContent = `${activeSec>0 ? fmtNum(area/(activeSec/3600),2) : '—'} ha/h`;
-    draw($('#sdRateChart'), rateSeries, 'rate', 16, 22, 20); draw($('#sdSpeedChart'), speedSeries, 'speed', 0, 10, null);
-    if (simSec >= duration){ paused = true; $('#sdPause').textContent='Končano'; stopSeederDemoMonitor(); }
   };
-  const startTimer = () => { stopSeederDemoMonitor(); _seederDemoTimer = setInterval(() => { if (!paused){ simSec += 60; update(); } }, 1000); };
-  $('#sdPause').onclick = () => { paused=!paused; $('#sdPause').textContent=paused?'Nadaljuj':'Pavza'; };
-  $('#sdRestart').onclick = () => { simSec=0; area=0; seed=0; activeSec=0; lastSec=0; paused=false; $('#sdPause').textContent='Pavza'; update(); startTimer(); };
-  update(); startTimer();
+  $('#sdRestart').onclick = () => startSeederDemoMonitor(true);
+  startSeederDemoMonitor(true);
 }
 
 function escapeHtml(s){

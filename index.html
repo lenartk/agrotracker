@@ -55,7 +55,7 @@
       </div>
       <div style="flex:1">
         <div class="home-title">AGRO<em>TRACKER</em></div>
-        <div class="home-sub">GPS vodenje · sledenje · evidenca — v5.4.2</div>
+        <div class="home-sub">GPS vodenje · sledenje · evidenca — v5.4.3</div>
       </div>
       <button class="iconbtn circle" id="homeHistoryBtn" title="Zgodovina"><svg class="icon"><use href="#i-folder"/></svg></button>
       <button class="iconbtn circle" id="homeSettingsBtn" title="Nastavitve"><svg class="icon"><use href="#i-sliders"/></svg></button>
@@ -91,9 +91,9 @@
         <div class="demo-head"><strong>30-min primer setve</strong><span>SIMULACIJA</span></div>
         <div class="demo-metrics">
           <div><b>1,11</b><small>ha</small></div><div><b>22,0</b><small>kg semena</small></div><div><b>19,9</b><small>kg/ha dej.</small></div>
-          <div><b>20,0</b><small>kg/ha cilj</small></div><div><b>2,27</b><small>ha/h</small></div><div><b>47</b><small>% parcele</small></div>
+          <div><b>20,0</b><small>kg/ha cilj</small></div><div><b>2,26</b><small>ha/h</small></div><div><b>47</b><small>% parcele</small></div>
         </div>
-        <button class="minibtn" id="homeSeederDemoBtn" style="width:100%">Odpri podrobnosti 30-min primera</button>
+        <button class="minibtn" id="homeSeederDemoBtn" style="width:100%">Odpri monitor 30-min primera</button>
       </div>
     </div>
 
@@ -117,6 +117,57 @@
         <button class="quick-btn" id="homeSettingsBtn2"><svg class="icon"><use href="#i-sliders"/></svg><span>Nastavitve</span></button>
         <button class="quick-btn" id="homeInstallBtn"><svg class="icon"><use href="#i-download"/></svg><span>Namesti</span></button>
       </div>
+    </div>
+  </section>
+
+  <!-- ========== SEEDER MONITOR VIEW ========== -->
+  <section id="view-seeder" class="view seeder-page">
+    <div class="nav-back seeder-page-nav">
+      <button class="iconbtn" id="seederBackBtn" title="Nazaj"><svg class="icon"><use href="#i-back"/></svg></button>
+      <div class="title">Monitor setve</div>
+      <span class="live-chip">SIM LIVE</span>
+    </div>
+    <div class="seeder-page-body">
+      <div class="seeder-monitor-head">
+        <div>
+          <div class="seeder-monitor-title">30-min primer setve</div>
+          <div class="small muted">Stabilen 60× replay · 30 min v približno 30 s</div>
+        </div>
+        <div class="seeder-monitor-clock" id="sdClock">00:00 / 30:00</div>
+      </div>
+      <div class="seeder-progress"><div id="sdProgress"></div></div>
+      <div class="seeder-live-grid">
+        <div class="seeder-live primary"><b id="sdRate">20,0</b><small>kg/ha dejansko</small></div>
+        <div class="seeder-live"><b id="sdTarget">20,0</b><small>kg/ha cilj</small></div>
+        <div class="seeder-live"><b id="sdDev">0,0 %</b><small>odklon</small></div>
+        <div class="seeder-live"><b id="sdSpeed">7,2</b><small>km/h</small></div>
+        <div class="seeder-live"><b id="sdArea">0,000</b><small>ha posejano</small></div>
+        <div class="seeder-live"><b id="sdSeed">0,0</b><small>kg semena</small></div>
+      </div>
+      <div class="seeder-state-row"><span id="sdState" class="status-chip ok">SEJE</span><span id="sdAvg">povp. — kg/ha</span><span id="sdHaH">— ha/h</span></div>
+      <div class="seeder-page-chart">
+        <div class="seeder-chart-title"><strong>Odmerek</strong><span><i class="legend-line actual"></i>dejanski <i class="legend-line target"></i>cilj</span></div>
+        <svg id="sdRateChart" viewBox="0 0 600 230" role="img" aria-label="Graf dejanskega in ciljnega odmerka skozi 30 minut">
+          <defs><clipPath id="sdRateClip"><rect id="sdRateClipRect" x="50" y="18" width="0" height="174"/></clipPath></defs>
+          <g class="chart-grid"><line x1="50" y1="18" x2="580" y2="18"/><line x1="50" y1="76" x2="580" y2="76"/><line x1="50" y1="134" x2="580" y2="134"/><line x1="50" y1="192" x2="580" y2="192"/></g>
+          <g class="chart-axis"><text x="8" y="23">22</text><text x="8" y="81">20</text><text x="8" y="139">18</text><text x="8" y="197">16</text><text x="47" y="218">0</text><text x="216" y="218">10</text><text x="392" y="218">20</text><text x="548" y="218">30 min</text></g>
+          <line class="chart-target" x1="50" y1="76" x2="580" y2="76"/>
+          <g clip-path="url(#sdRateClip)"><path id="sdRatePath" class="chart-actual" d=""/></g>
+          <line id="sdRateCursor" class="chart-cursor" x1="50" y1="18" x2="50" y2="192"/>
+        </svg>
+      </div>
+      <div class="seeder-page-chart compact">
+        <div class="seeder-chart-title"><strong>Hitrost</strong><span>km/h</span></div>
+        <svg id="sdSpeedChart" viewBox="0 0 600 170" role="img" aria-label="Graf hitrosti skozi 30 minut">
+          <defs><clipPath id="sdSpeedClip"><rect id="sdSpeedClipRect" x="50" y="18" width="0" height="112"/></clipPath></defs>
+          <g class="chart-grid"><line x1="50" y1="18" x2="580" y2="18"/><line x1="50" y1="74" x2="580" y2="74"/><line x1="50" y1="130" x2="580" y2="130"/></g>
+          <g class="chart-axis"><text x="8" y="23">10</text><text x="15" y="79">5</text><text x="15" y="135">0</text><text x="47" y="158">0</text><text x="216" y="158">10</text><text x="392" y="158">20</text><text x="548" y="158">30 min</text></g>
+          <g clip-path="url(#sdSpeedClip)"><path id="sdSpeedPath" class="chart-speed" d=""/></g>
+          <line id="sdSpeedCursor" class="chart-cursor" x1="50" y1="18" x2="50" y2="130"/>
+        </svg>
+      </div>
+      <div class="seeder-monitor-actions"><button class="minibtn" id="sdPause">Pavza</button><button class="minibtn" id="sdRestart">Ponovi</button></div>
+      <div class="note">Simulacija ne zapisuje ničesar med prave seje. Ta isti pogled je pripravljen, da pozneje namesto simulacije prikazuje Wi‑Fi telemetrijo sejalnice.</div>
     </div>
   </section>
 
@@ -351,7 +402,7 @@
     <div class="card">
       <h3>O aplikaciji</h3>
       <div class="note">
-        AgroTracker v5.4.2 — GPS vodenje (AB linije + lightbar), 2D/3D karta s terenom, sledenje obdelanim površinam in GERK evidenca opravil.<br>
+        AgroTracker v5.4.3 — GPS vodenje (AB linije + lightbar), 2D/3D karta s terenom, sledenje obdelanim površinam in GERK evidenca opravil.<br>
         Povezava z ESP32 modulom preko Web Bluetooth.<br><br>
         <strong>Brskalnik:</strong> <span id="settingsBrowser" class="small muted"></span><br>
         <strong>Nameščeno:</strong> <span id="settingsCacheVer" class="small muted">—</span>
