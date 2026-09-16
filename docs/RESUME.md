@@ -1,6 +1,6 @@
 # AgroTracker — RESUME (hitri vstop po restartu)
 
-Zadnja posodobitev: 2026-09-16, verzija **v5.4** (SW cache v21), live na
+Zadnja posodobitev: 2026-09-16, verzija **v5.4.1** (SW cache v22), live na
 `https://lenartk.github.io/agrotracker/`.
 
 ## Kaj je AgroTracker
@@ -15,7 +15,7 @@ kmetije (KMG-MID **100220160**, kraška regija, pretežno travniki + njive).
 - Repo ima tudi `gpt/` podmapo (uporabnikov ločen eksperiment) — NE dotikaj.
 - **Deploy = git push na main → GitHub Pages** (~1–3 min). Vedno počakaj potrditev:
   `until curl -s .../sw.js | grep -q "agrotracker-app-vNN"; do sleep 10; done` (run_in_background).
-- **Ob VSAKI spremembi PWA zvišaj `APP_CACHE` v `sw.js`** (trenutno v18). Od v4.2.1
+- **Ob VSAKI spremembi PWA zvišaj `APP_CACHE` v `sw.js`** (trenutno v22). Od v4.2.1
   se telefon posodablja sam (install s `cache:'reload'` + controllerchange reload).
 
 ## Arhitektura (js/, vanilla ES moduli, brez bundlerja)
@@ -37,6 +37,7 @@ kmetije (KMG-MID **100220160**, kraška regija, pretežno travniki + njive).
   `sejalnica_proto.h` = kopija sejalnica `shared/rs485_proto.h`.
 
 ## Ključne funkcije po verzijah (kratko)
+- v5.4.1: na začetni zaslon dodana jasno vidna Zgodovina, 30-min demo pregled in pojasnilo, da bo sejalnica zaradi ESP32-S2 povezana prek Wi-Fi.
 - v5.4: terenski povzetek setve/materiala — ha, dejanska količina (površina × odmerek), dejanski/ciljni odmerek, efektivni čas, ha/h; zgodovina in izvozi uporabljajo iste metrike. Lokalni `?demo=1` doda samo razvojno 30-min sejo.
 - v3.x: AB vodenje+lightbar, prejšnja pokritost, sezona/CSV evidenca, sejalnica RS485.
 - v4.0: MapLibre 2D/3D teren; GERK (gerk_extract.py + Action + gumb).

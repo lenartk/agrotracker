@@ -1153,6 +1153,8 @@ function wireHome(){
   $('#homeSettingsBtn').onclick = () => showView('settings');
   $('#homeHistoryBtn').onclick = () => showView('history');
   $('#homeHistoryBtn2').onclick = () => showView('history');
+  $('#homeHistoryMainBtn').onclick = () => showView('history');
+  $('#homeSeederDemoBtn').onclick = () => openSeederDemoPreview();
   $('#homeSettingsBtn2').onclick = () => showView('settings');
   $('#homeInstallBtn').onclick = () => appInfo('V meniju brskalnika (⋮) izberi "Dodaj na začetni zaslon" oz. "Namesti aplikacijo".', 'Namestitev');
   $('#homeMapBtn').onclick = () => {
@@ -1163,6 +1165,29 @@ function wireHome(){
   $('#homeNote').addEventListener('input', e => state.note = e.target.value);
 
   $('#homeStartBtn').onclick = () => startSession();
+}
+
+function openSeederDemoPreview(){
+  const body = $('#modalBody');
+  body.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <div class="session-icon" style="background:#22c55e22;color:#22c55e;width:52px;height:52px">${svgIcon('sprout', 'icon lg')}</div>
+      <div><div style="font-weight:800">30-min primer setve</div><div class="small muted">SIMULACIJA · ne zapisuje se med prave seje</div></div>
+    </div>
+    <div class="session-metrics" style="grid-template-columns:repeat(2,1fr)">
+      <div class="session-metric"><div class="v">1,106</div><div class="l">ha</div></div>
+      <div class="session-metric"><div class="v">22,0 kg</div><div class="l">seme</div></div>
+      <div class="session-metric"><div class="v">19,9</div><div class="l">dej. kg/ha</div></div>
+      <div class="session-metric"><div class="v">20,0</div><div class="l">cilj kg/ha</div></div>
+      <div class="session-metric"><div class="v">47 %</div><div class="l">parcele</div></div>
+      <div class="session-metric"><div class="v">2,27</div><div class="l">ha/h med delom</div></div>
+      <div class="session-metric"><div class="v">29m 16s</div><div class="l">aktivno delo</div></div>
+      <div class="session-metric"><div class="v">30m 0s</div><div class="l">cel čas</div></div>
+      <div class="session-metric"><div class="v">7,4</div><div class="l">km/h med delom</div></div>
+      <div class="session-metric"><div class="v">3,69 km</div><div class="l">pot</div></div>
+    </div>
+    <div class="note" style="margin-top:10px">Primer je narejen iz iste 30-min simulacije, s katero je bil preverjen v5.4. Pri pravi seji bodo te vrednosti izračunane iz dejanskih GPS in telemetrijskih podatkov.</div>`;
+  $('#modalScrim').classList.add('open');
 }
 
 function escapeHtml(s){

@@ -6,6 +6,13 @@ Format: [verzija] - YYYY-MM-DD
 
 ---
 
+## [v5.4.1] - 2026-09-16
+
+- začetni zaslon: velik in jasen gumb **Zgodovina opravil**
+- dodan varen **30-min predogled setve** (1,106 ha, 22,0 kg, 19,9/20,0 kg/ha, 2,27 ha/h); ne zapisuje se med prave seje
+- UI jasno pove, da trenutna sejalnica z ESP32-S2 nima BLE povezave AgroTracker; povezava bo prek Wi-Fi/hotspota
+- `APP_CACHE` v22
+
 ## [v5.4] - 2026-09-16
 
 ### Dodano — terenski uporabniški povzetek

@@ -55,7 +55,7 @@
       </div>
       <div style="flex:1">
         <div class="home-title">AGRO<em>TRACKER</em></div>
-        <div class="home-sub">GPS vodenje · sledenje · evidenca — v5.4</div>
+        <div class="home-sub">GPS vodenje · sledenje · evidenca — v5.4.1</div>
       </div>
       <button class="iconbtn circle" id="homeHistoryBtn" title="Zgodovina"><svg class="icon"><use href="#i-folder"/></svg></button>
       <button class="iconbtn circle" id="homeSettingsBtn" title="Nastavitve"><svg class="icon"><use href="#i-sliders"/></svg></button>
@@ -83,6 +83,27 @@
 
     <button class="start-btn" id="homeStartBtn">Začni sledenje</button>
     <button class="minibtn" id="homeMapBtn" style="width:100%;margin-top:8px">Odpri karto (brez beleženja)</button>
+
+    <div class="section home-records">
+      <div class="section-label">Evidenca in predogled</div>
+      <button class="history-main-btn" id="homeHistoryMainBtn"><svg class="icon"><use href="#i-folder"/></svg><span><strong>Zgodovina opravil</strong><small>ha · poraba · odmerek · čas · ha/h</small></span></button>
+      <div class="demo-summary-card">
+        <div class="demo-head"><strong>30-min primer setve</strong><span>SIMULACIJA</span></div>
+        <div class="demo-metrics">
+          <div><b>1,11</b><small>ha</small></div><div><b>22,0</b><small>kg semena</small></div><div><b>19,9</b><small>kg/ha dej.</small></div>
+          <div><b>20,0</b><small>kg/ha cilj</small></div><div><b>2,27</b><small>ha/h</small></div><div><b>47</b><small>% parcele</small></div>
+        </div>
+        <button class="minibtn" id="homeSeederDemoBtn" style="width:100%">Odpri podrobnosti 30-min primera</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Povezava s sejalnico</div>
+      <div class="card connection-note">
+        <div class="rowline"><strong>Trenutno še ni neposredne povezave</strong><span class="status-chip warn">Wi‑Fi v pripravi</span></div>
+        <div class="hint" style="margin:8px 0 0">Sedanji firmware sejalnice ne oddaja AgroTracker telemetrije. Zadnji ESP32-S2 nima Bluetootha, zato bo prava povezava narejena prek Wi‑Fi/hotspota. Podatke lahko do takrat pregleduješ v demo načinu in zgodovini.</div>
+      </div>
+    </div>
 
     <div class="section" style="margin-top:20px" id="seasonSection">
       <div class="section-label">Sezona <span id="seasonYear"></span></div>
@@ -175,7 +196,7 @@
 
         <div class="card">
           <h3>ESP32 (BLE)</h3>
-          <div class="hint">Povezava na stroj preko modula ESP32. Zahteva Chrome na Androidu.</div>
+          <div class="hint">Za module, ki podpirajo BLE. Trenutna sejalnica z ESP32-S2 BLE nima; zanjo bo povezava prek Wi‑Fi.</div>
           <div id="drawerBleUnsupported" class="note" style="display:none;margin-bottom:8px;color:var(--warn)">Brskalnik ne podpira Web Bluetooth.</div>
           <div class="rowline"><span class="small muted">Stanje</span><strong id="drawerBleStatus">ni povezano</strong></div>
           <button class="minibtn" id="drawerBleBtn" style="width:100%">Poveži</button>
@@ -297,7 +318,7 @@
 
     <div class="card">
       <h3>BLE povezava</h3>
-      <div class="hint">Modul ESP32 na stroju pošilja telemetrijo.</div>
+      <div class="hint">Za stroje z BLE modulom. Trenutna sejalnica z ESP32-S2 BLE ne podpira; zanjo je predvidena Wi‑Fi povezava.</div>
       <div class="rowline"><span class="small muted">Stanje</span><strong id="settingsBleStatus">—</strong></div>
       <button class="minibtn" id="settingsBleBtn" style="width:100%">Poveži</button>
       <label class="toggle" style="margin-top:10px"><span>Uporabi "aktiven" signal stroja (iz BLE)</span><input type="checkbox" id="settingsUseBleActive"></label>
@@ -330,7 +351,7 @@
     <div class="card">
       <h3>O aplikaciji</h3>
       <div class="note">
-        AgroTracker v5.4 — GPS vodenje (AB linije + lightbar), 2D/3D karta s terenom, sledenje obdelanim površinam in GERK evidenca opravil.<br>
+        AgroTracker v5.4.1 — GPS vodenje (AB linije + lightbar), 2D/3D karta s terenom, sledenje obdelanim površinam in GERK evidenca opravil.<br>
         Povezava z ESP32 modulom preko Web Bluetooth.<br><br>
         <strong>Brskalnik:</strong> <span id="settingsBrowser" class="small muted"></span><br>
         <strong>Nameščeno:</strong> <span id="settingsCacheVer" class="small muted">—</span>

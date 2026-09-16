@@ -381,3 +381,10 @@ input:focus,select:focus{border-color:var(--accent)}
 .bigbtn.work-off{background:#374151;border-color:#4b5563}
 
 .lp-hint{text-transform:none;letter-spacing:0;font-weight:600;opacity:.65}
+
+/* v5.4.1 — bolj vidna evidenca in varen demo na domačem zaslonu */
+.home-records{margin-top:20px}
+.history-main-btn{width:100%;display:flex;align-items:center;gap:12px;padding:14px;border:1px solid #22c55e66;border-radius:var(--radius-m);background:linear-gradient(135deg,#22c55e18,var(--panel));color:var(--text);text-align:left}
+.history-main-btn .icon{width:24px;height:24px;color:var(--accent);flex:0 0 auto}.history-main-btn span{display:flex;flex-direction:column;gap:3px}.history-main-btn strong{font-size:15px}.history-main-btn small{font-size:11px;color:var(--muted);font-weight:600}
+.demo-summary-card{margin-top:8px;padding:12px;border:1px dashed #f59e0b77;border-radius:var(--radius-m);background:#f59e0b0c}.demo-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}.demo-head strong{font-size:13px}.demo-head span,.status-chip{font-size:9px;font-weight:900;letter-spacing:.08em;padding:4px 7px;border-radius:999px;background:#f59e0b22;color:var(--warn);white-space:nowrap}
+.demo-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px}.demo-metrics div{padding:8px 5px;border-radius:8px;background:var(--panel);text-align:center}.demo-metrics b{display:block;font-size:15px}.demo-metrics small{display:block;margin-top:2px;font-size:9px;color:var(--muted);line-height:1.15}.connection-note{border:1px solid #f59e0b33}
