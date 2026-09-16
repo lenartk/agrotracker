@@ -1,3 +1,11 @@
+## v5.4.2 — 2026-09-16
+
+- 30-min primer setve je zdaj živ monitor: simulirana telemetrija se predvaja 60× hitreje.
+- Sprotno prikazuje dejanski/ciljni kg/ha, odklon, hitrost, ha, kg semena, povprečje in ha/h.
+- Dodana grafa odmerka (dejanski proti cilju) in hitrosti ter pavza/ponovi.
+- Monitor je zasnovan tako, da se ga kasneje priklopi na pravo Wi-Fi telemetrijo sejalnice.
+- Service Worker cache: v23.
+
 # Changelog
 
 Vse pomembnejše spremembe v projektu AgroTracker.

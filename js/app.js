@@ -1167,27 +1167,93 @@ function wireHome(){
   $('#homeStartBtn').onclick = () => startSession();
 }
 
+let _seederDemoTimer = null;
+
+function stopSeederDemoMonitor(){
+  if (_seederDemoTimer){ clearInterval(_seederDemoTimer); _seederDemoTimer = null; }
+}
+
 function openSeederDemoPreview(){
+  stopSeederDemoMonitor();
   const body = $('#modalBody');
   body.innerHTML = `
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-      <div class="session-icon" style="background:#22c55e22;color:#22c55e;width:52px;height:52px">${svgIcon('sprout', 'icon lg')}</div>
-      <div><div style="font-weight:800">30-min primer setve</div><div class="small muted">SIMULACIJA · ne zapisuje se med prave seje</div></div>
+    <div class="seeder-monitor-head">
+      <div>
+        <div class="seeder-monitor-title">30-min primer setve <span class="live-chip">SIM LIVE</span></div>
+        <div class="small muted">Simulacija je 60× hitrejša: 30 min se odvrti v približno 30 s.</div>
+      </div>
+      <div class="seeder-monitor-clock" id="sdClock">00:00 / 30:00</div>
     </div>
-    <div class="session-metrics" style="grid-template-columns:repeat(2,1fr)">
-      <div class="session-metric"><div class="v">1,106</div><div class="l">ha</div></div>
-      <div class="session-metric"><div class="v">22,0 kg</div><div class="l">seme</div></div>
-      <div class="session-metric"><div class="v">19,9</div><div class="l">dej. kg/ha</div></div>
-      <div class="session-metric"><div class="v">20,0</div><div class="l">cilj kg/ha</div></div>
-      <div class="session-metric"><div class="v">47 %</div><div class="l">parcele</div></div>
-      <div class="session-metric"><div class="v">2,27</div><div class="l">ha/h med delom</div></div>
-      <div class="session-metric"><div class="v">29m 16s</div><div class="l">aktivno delo</div></div>
-      <div class="session-metric"><div class="v">30m 0s</div><div class="l">cel čas</div></div>
-      <div class="session-metric"><div class="v">7,4</div><div class="l">km/h med delom</div></div>
-      <div class="session-metric"><div class="v">3,69 km</div><div class="l">pot</div></div>
+    <div class="seeder-live-grid">
+      <div class="seeder-live primary"><b id="sdRate">20,0</b><small>kg/ha dejansko</small></div>
+      <div class="seeder-live"><b id="sdTarget">20,0</b><small>kg/ha cilj</small></div>
+      <div class="seeder-live"><b id="sdDev">0,0 %</b><small>odklon</small></div>
+      <div class="seeder-live"><b id="sdSpeed">7,2</b><small>km/h</small></div>
+      <div class="seeder-live"><b id="sdArea">0,000</b><small>ha posejano</small></div>
+      <div class="seeder-live"><b id="sdSeed">0,0</b><small>kg semena</small></div>
     </div>
-    <div class="note" style="margin-top:10px">Primer je narejen iz iste 30-min simulacije, s katero je bil preverjen v5.4. Pri pravi seji bodo te vrednosti izračunane iz dejanskih GPS in telemetrijskih podatkov.</div>`;
+    <div class="seeder-state-row"><span id="sdState" class="status-chip ok">SEJE</span><span id="sdAvg">povp. — kg/ha</span><span id="sdHaH">— ha/h</span></div>
+    <div class="seeder-chart-card"><div class="seeder-chart-title">Odmerek <span>dejanski / cilj</span></div><canvas id="sdRateChart" height="150"></canvas></div>
+    <div class="seeder-chart-card"><div class="seeder-chart-title">Hitrost <span>km/h</span></div><canvas id="sdSpeedChart" height="105"></canvas></div>
+    <div class="btn-row" style="margin-top:10px">
+      <button class="minibtn" id="sdPause">Pavza</button>
+      <button class="minibtn" id="sdRestart">Ponovi</button>
+    </div>
+    <div class="note" style="margin-top:10px">To je isti model 30-min testne seje. Ob pravi povezavi bo ta monitor preklopljen na dejanske podatke sejalnice.</div>`;
   $('#modalScrim').classList.add('open');
+
+  const duration = 1800, activeTotal = 1760, finalArea = 1.106;
+  const areaPerActiveSec = finalArea / activeTotal;
+  const rateSeries = [], speedSeries = [];
+  for (let sec = 0; sec <= duration; sec += 2){
+    const active = !((sec >= 580 && sec < 600) || (sec >= 1220 && sec < 1240));
+    let rate = 20 * (1 + 0.012 * Math.sin(sec / 17));
+    if (sec >= 900 && sec < 960) rate *= 0.87;
+    rateSeries.push({ sec, rate: active ? rate : 0, active });
+    speedSeries.push({ sec, speed: 7.2 });
+  }
+
+  let simSec = 0, paused = false, area = 0, seed = 0, activeSec = 0;
+  let lastSec = 0;
+  const fmtClock = sec => `${String(Math.floor(sec/60)).padStart(2,'0')}:${String(Math.floor(sec%60)).padStart(2,'0')}`;
+  const draw = (canvas, pts, valueKey, minY, maxY, target = null) => {
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1, w = Math.max(280, canvas.clientWidth || 300), h = +canvas.getAttribute('height');
+    canvas.width = Math.round(w*dpr); canvas.height = Math.round(h*dpr);
+    const ctx = canvas.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+    const pad = {l:34,r:8,t:10,b:20}, pw=w-pad.l-pad.r, ph=h-pad.t-pad.b;
+    ctx.strokeStyle = 'rgba(148,163,184,.22)'; ctx.lineWidth=1;
+    for (let i=0;i<4;i++){ const y=pad.t+ph*i/3; ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke(); }
+    if (target != null){ const y=pad.t+ph*(1-(target-minY)/(maxY-minY)); ctx.setLineDash([5,4]); ctx.strokeStyle='rgba(245,158,11,.9)'; ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke(); ctx.setLineDash([]); }
+    ctx.strokeStyle = 'rgba(34,197,94,.95)'; ctx.lineWidth=2; ctx.beginPath();
+    let started=false; for (const p of pts){ if (p.sec > simSec) break; const x=pad.l+pw*p.sec/duration; const v=Math.max(minY,Math.min(maxY,p[valueKey])); const y=pad.t+ph*(1-(v-minY)/(maxY-minY)); if(!started){ctx.moveTo(x,y);started=true;} else ctx.lineTo(x,y); } ctx.stroke();
+    ctx.fillStyle='rgba(148,163,184,.9)'; ctx.font='10px sans-serif'; ctx.fillText(String(maxY),2,pad.t+7); ctx.fillText(String(minY),2,pad.t+ph); ctx.fillText('0',pad.l,h-4); ctx.fillText('30 min',w-pad.r-34,h-4);
+  };
+  const update = () => {
+    const now = Math.min(duration, Math.floor(simSec));
+    for (let s = lastSec + 1; s <= now; s++){
+      const active = !((s >= 580 && s < 600) || (s >= 1220 && s < 1240));
+      if (!active) continue;
+      let r = 20 * (1 + 0.012 * Math.sin(s / 17)); if (s >= 900 && s < 960) r *= 0.87;
+      const dHa = areaPerActiveSec; area += dHa; seed += dHa * r; activeSec++;
+    }
+    lastSec = now;
+    const active = !((now >= 580 && now < 600) || (now >= 1220 && now < 1240));
+    let rate = 20 * (1 + 0.012 * Math.sin(now / 17)); if (now >= 900 && now < 960) rate *= 0.87;
+    const shownRate = active ? rate : 0, dev = active ? (rate/20-1)*100 : 0;
+    $('#sdClock').textContent = `${fmtClock(now)} / 30:00`;
+    $('#sdRate').textContent = fmtNum(shownRate,1); $('#sdTarget').textContent='20,0'; $('#sdDev').textContent=`${dev>=0?'+':''}${fmtNum(dev,1)} %`;
+    $('#sdSpeed').textContent='7,2'; $('#sdArea').textContent=fmtNum(area,3); $('#sdSeed').textContent=fmtNum(seed,1);
+    $('#sdState').textContent = active ? 'SEJE' : 'DVIGNJENA'; $('#sdState').className = 'status-chip ' + (active ? 'ok' : 'warn');
+    $('#sdAvg').textContent = `povp. ${area>0 ? fmtNum(seed/area,1) : '—'} kg/ha`;
+    $('#sdHaH').textContent = `${activeSec>0 ? fmtNum(area/(activeSec/3600),2) : '—'} ha/h`;
+    draw($('#sdRateChart'), rateSeries, 'rate', 16, 22, 20); draw($('#sdSpeedChart'), speedSeries, 'speed', 0, 10, null);
+    if (simSec >= duration){ paused = true; $('#sdPause').textContent='Končano'; stopSeederDemoMonitor(); }
+  };
+  const startTimer = () => { stopSeederDemoMonitor(); _seederDemoTimer = setInterval(() => { if (!paused){ simSec += 60; update(); } }, 1000); };
+  $('#sdPause').onclick = () => { paused=!paused; $('#sdPause').textContent=paused?'Nadaljuj':'Pavza'; };
+  $('#sdRestart').onclick = () => { simSec=0; area=0; seed=0; activeSec=0; lastSec=0; paused=false; $('#sdPause').textContent='Pavza'; update(); startTimer(); };
+  update(); startTimer();
 }
 
 function escapeHtml(s){
@@ -2513,7 +2579,7 @@ async function openSessionDetail(id){
     toast('Izbrisano');
   };
 }
-function closeModal(){ $('#modalScrim').classList.remove('open'); }
+function closeModal(){ stopSeederDemoMonitor(); $('#modalScrim').classList.remove('open'); }
 
 function exportSessionAsGeoJSON(s){
   const fc = sessionToGeoJSON(s);

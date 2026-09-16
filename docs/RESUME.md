@@ -1,6 +1,6 @@
 # AgroTracker — RESUME (hitri vstop po restartu)
 
-Zadnja posodobitev: 2026-09-16, verzija **v5.4.1** (SW cache v22), live na
+Zadnja posodobitev: 2026-09-16, verzija **v5.4.2** (SW cache v23), live na
 `https://lenartk.github.io/agrotracker/`.
 
 ## Kaj je AgroTracker
@@ -37,6 +37,7 @@ kmetije (KMG-MID **100220160**, kraška regija, pretežno travniki + njive).
   `sejalnica_proto.h` = kopija sejalnica `shared/rs485_proto.h`.
 
 ## Ključne funkcije po verzijah (kratko)
+- v5.4.2: 30-min primer setve je živ monitor z animirano telemetrijo, grafoma odmerka in hitrosti ter pavzo/ponovitvijo; pripravljen za kasnejši priklop na pravo Wi-Fi telemetrijo.
 - v5.4.1: na začetni zaslon dodana jasno vidna Zgodovina, 30-min demo pregled in pojasnilo, da bo sejalnica zaradi ESP32-S2 povezana prek Wi-Fi.
 - v5.4: terenski povzetek setve/materiala — ha, dejanska količina (površina × odmerek), dejanski/ciljni odmerek, efektivni čas, ha/h; zgodovina in izvozi uporabljajo iste metrike. Lokalni `?demo=1` doda samo razvojno 30-min sejo.
 - v3.x: AB vodenje+lightbar, prejšnja pokritost, sezona/CSV evidenca, sejalnica RS485.
