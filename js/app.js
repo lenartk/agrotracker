@@ -47,6 +47,7 @@ const state = {
     useBleWidth: true,
     guidanceBeep: false,
     dayTheme: false,
+    keepScreenAwake: true,
     kmgMid: '',
   },
   // Home
@@ -237,7 +238,7 @@ let _screenWakeLock = null;
 let _wakeLockWarned = false;
 
 function wakeLockWanted(){
-  return !!state.session && state.session.state === 'running';
+  return state.settings.keepScreenAwake !== false && !!state.session && state.session.state === 'running';
 }
 
 function refreshWakeLockUI(){
@@ -2947,6 +2948,13 @@ function wireSettingsView(){
     applyTheme();
     persistSettings();
   });
+  $('#settingsKeepScreenAwake').addEventListener('change', async (e) => {
+    state.settings.keepScreenAwake = e.target.checked;
+    await persistSettings();
+    if (state.settings.keepScreenAwake && wakeLockWanted()) requestScreenWakeLock();
+    else releaseScreenWakeLock();
+    refreshWakeLockUI();
+  });
   $('#settingsUseBleActive').addEventListener('change', (e) => {
     state.settings.useBleMachineActive = e.target.checked;
     persistSettings();
@@ -3049,6 +3057,7 @@ async function renderSettings(){
   $$('input[name=settingsGpsSrc]').forEach(r => { r.checked = (r.value === state.settings.gpsSource); });
   $('#settingsAutoParcel').checked = state.settings.autoSelectParcel;
   $('#settingsDayMode').checked = state.settings.dayTheme;
+  $('#settingsKeepScreenAwake').checked = state.settings.keepScreenAwake !== false;
   $('#settingsUseBleActive').checked = state.settings.useBleMachineActive;
   $('#settingsUseBleWidth').checked = state.settings.useBleWidth;
 
