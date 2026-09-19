@@ -48,6 +48,7 @@ const state = {
     guidanceBeep: false,
     dayTheme: false,
     keepScreenAwake: true,
+    backgroundTracking: true,
     kmgMid: '',
   },
   // Home
@@ -292,10 +293,57 @@ async function releaseScreenWakeLock(){
   refreshWakeLockUI();
 }
 
+function nativeBridgeAvailable(){
+  return !!window.AgroNative && typeof window.AgroNative.startBackgroundTracking === 'function';
+}
+
+function nativeBackgroundWanted(){
+  return nativeBridgeAvailable() && state.settings.backgroundTracking !== false &&
+         state.settings.gpsSource === 'phone' && !!state.session && state.session.state === 'running';
+}
+
+function startNativeBackgroundTracking(){
+  if (!nativeBackgroundWanted()) return false;
+  try { return !!window.AgroNative.startBackgroundTracking(); }
+  catch (e){ console.warn('Native background GPS start ni uspel', e); return false; }
+}
+
+function stopNativeBackgroundTracking(){
+  if (!nativeBridgeAvailable()) return;
+  try { window.AgroNative.stopBackgroundTracking(); } catch (e){ console.warn('Native background GPS stop ni uspel', e); }
+}
+
+function drainNativeBackgroundFixes(){
+  if (!nativeBridgeAvailable() || !state.session) return 0;
+  try {
+    const raw = window.AgroNative.drainLocations();
+    const pts = JSON.parse(raw || '[]');
+    if (!Array.isArray(pts) || !pts.length) return 0;
+    pts.sort((a,b) => (a.t || 0) - (b.t || 0));
+    let lastT = state.session.track?.length ? state.session.track[state.session.track.length - 1].t : 0;
+    let n = 0;
+    for (const p of pts){
+      if (!(p.t > lastT) || !Number.isFinite(p.lat) || !Number.isFinite(p.lng)) continue;
+      gps.injectFix({
+        lat: p.lat, lng: p.lng, spdKmh: Number.isFinite(p.spd) ? p.spd * 3.6 : 0,
+        headingDeg: Number.isFinite(p.hdg) ? p.hdg : null, accuracyM: Number.isFinite(p.acc) ? p.acc : null,
+        altitudeM: Number.isFinite(p.alt) ? p.alt : null, tsMs: p.t, source: 'native-bg'
+      });
+      lastT = p.t; n++;
+    }
+    if (n) toast(`GPS iz ozadja: dodanih ${n} točk`, 2500);
+    return n;
+  } catch (e){ console.warn('Native background GPS drain ni uspel', e); return 0; }
+}
+
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && wakeLockWanted()) requestScreenWakeLock({ silent: true });
-  else refreshWakeLockUI();
+  if (document.visibilityState === 'visible'){
+    if (wakeLockWanted()) requestScreenWakeLock({ silent: true });
+    drainNativeBackgroundFixes();
+  } else refreshWakeLockUI();
 });
+window.addEventListener('pageshow', () => drainNativeBackgroundFixes());
+window.addEventListener('agrotrackerNativeResume', () => drainNativeBackgroundFixes());
 
 // ============ INIT ============
 function applyTheme(){
@@ -1861,13 +1909,16 @@ async function startSession(){
   refreshTelemetryUI();
   toast('Seja začeta: ' + op.name);
   requestScreenWakeLock();
+  startNativeBackgroundTracking();
   startAutoSaveTimer();
 }
 
 function pauseSession(){
   if (!state.session || state.session.state !== 'running') return;
+  drainNativeBackgroundFixes();
   state.session.pause();
   releaseScreenWakeLock();
+  stopNativeBackgroundTracking();
   setTrackingUI('paused');
   toast('Pavza');
 }
@@ -1876,6 +1927,7 @@ function resumeSession(){
   state.session.start();
   setTrackingUI('running');
   requestScreenWakeLock();
+  startNativeBackgroundTracking();
   toast('Nadaljuj');
 }
 async function confirmStopSession(){
@@ -1885,8 +1937,10 @@ async function confirmStopSession(){
 }
 async function stopSession(){
   if (!state.session) return;
+  drainNativeBackgroundFixes();
   state.session.stop();
   releaseScreenWakeLock();
+  stopNativeBackgroundTracking();
   setTrackingUI('stopped');
   stopAutoSaveTimer();
   try {
@@ -2955,6 +3009,13 @@ function wireSettingsView(){
     else releaseScreenWakeLock();
     refreshWakeLockUI();
   });
+  $('#settingsBackgroundTracking').addEventListener('change', async (e) => {
+    state.settings.backgroundTracking = e.target.checked;
+    await persistSettings();
+    if (nativeBackgroundWanted()) startNativeBackgroundTracking();
+    else stopNativeBackgroundTracking();
+    renderSettings();
+  });
   $('#settingsUseBleActive').addEventListener('change', (e) => {
     state.settings.useBleMachineActive = e.target.checked;
     persistSettings();
@@ -3058,6 +3119,13 @@ async function renderSettings(){
   $('#settingsAutoParcel').checked = state.settings.autoSelectParcel;
   $('#settingsDayMode').checked = state.settings.dayTheme;
   $('#settingsKeepScreenAwake').checked = state.settings.keepScreenAwake !== false;
+  const nativeBg = nativeBridgeAvailable();
+  $('#settingsBackgroundTracking').checked = nativeBg && state.settings.backgroundTracking !== false;
+  $('#settingsBackgroundTracking').disabled = !nativeBg;
+  $('#settingsBackgroundStatus').textContent = nativeBg
+    ? 'Android foreground service: GPS lahko teče tudi z ugasnjenim zaslonom ali med uporabo drugega appa.'
+    : 'V navadni PWA tega Android/Chrome ne omogoča. Ta možnost se aktivira v AgroTracker Android različici.';
+  $('#settingsAndroidDownload').style.display = nativeBg ? 'none' : '';
   $('#settingsUseBleActive').checked = state.settings.useBleMachineActive;
   $('#settingsUseBleWidth').checked = state.settings.useBleWidth;
 

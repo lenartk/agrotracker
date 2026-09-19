@@ -1,0 +1,43 @@
+plugins {
+    id 'com.android.application'
+}
+
+def signingPropsFile = file(System.getProperty('user.home') + '/.config/agrotracker/android-signing.properties')
+def signingProps = new Properties()
+if (signingPropsFile.exists()) signingPropsFile.withInputStream { signingProps.load(it) }
+
+android {
+    namespace 'si.kosir.agrotracker'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'si.kosir.agrotracker'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '5.4.6'
+    }
+
+    signingConfigs {
+        release {
+            if (signingPropsFile.exists()) {
+                storeFile file(signingProps['storeFile'])
+                storePassword signingProps['storePassword']
+                keyAlias signingProps['keyAlias']
+                keyPassword signingProps['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            if (signingPropsFile.exists()) signingConfig signingConfigs.release
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

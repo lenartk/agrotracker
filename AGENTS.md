@@ -31,7 +31,7 @@ V tem vrstnem redu:
 
 Te stvari so **odločene, ne predlagaj sprememb brez utemeljitve:**
 
-- **PWA, ne native APK.** Razlogi v `docs/PROJECT.md` (Arhitekturne odločitve).
+- **PWA ostaja primarni in canonical UI.** Od v5.4.6 je izrecno dovoljen tanek `android-wrapper/` samo za foreground/background GPS, ker browser PWA tega ne zagotovi. Native sloj ne sme podvajati UI ali poslovne logike; nalaga isti produkcijski PWA in vrača GPS buffer v isti Session tok.
 - **ES moduli**, brez bundler-ja (Vite, Webpack), brez TypeScript-a. Direktno `<script type="module">`.
 - **IndexedDB**, ne LocalStorage / SQLite WASM.
 - **MapLibre GL 5.x** lokalno v `vendor/` (od v4.0; prej Leaflet — menjava zaradi 3D terena, uporabnikova odločitev 2026-07-16). Brez CDN.

@@ -1,6 +1,6 @@
 # AgroTracker — RESUME (hitri vstop po restartu)
 
-Zadnja posodobitev: 2026-09-16, verzija **v5.4.5** (SW cache v26), live na
+Zadnja posodobitev: 2026-09-19, verzija **v5.4.6** (SW cache v27), live na
 `https://lenartk.github.io/agrotracker/`.
 
 ## Kaj je AgroTracker
@@ -15,7 +15,7 @@ kmetije (KMG-MID **100220160**, kraška regija, pretežno travniki + njive).
 - Repo ima tudi `gpt/` podmapo (uporabnikov ločen eksperiment) — NE dotikaj.
 - **Deploy = git push na main → GitHub Pages** (~1–3 min). Vedno počakaj potrditev:
   `until curl -s .../sw.js | grep -q "agrotracker-app-vNN"; do sleep 10; done` (run_in_background).
-- **Ob VSAKI spremembi PWA zvišaj `APP_CACHE` v `sw.js`** (trenutno v26). Od v4.2.1
+- **Ob VSAKI spremembi PWA zvišaj `APP_CACHE` v `sw.js`** (trenutno v27). Od v4.2.1
   se telefon posodablja sam (install s `cache:'reload'` + controllerchange reload).
 
 ## Arhitektura (js/, vanilla ES moduli, brez bundlerja)
@@ -32,11 +32,13 @@ kmetije (KMG-MID **100220160**, kraška regija, pretežno travniki + njive).
 - `constants.js` — OPERATIONS (+ transport noPaint), MACHINES (+ defaultOp), GUIDANCE, DEFAULTS.
 - `storage.js` — IndexedDB **v3**: parcels, sessions, kv, gerklib, layers.
 - `ble.js` / `offline.js` — Web Bluetooth klient / tile predprenos.
+- `android-wrapper/` — tanek Android WebView + foreground `TrackingService`; isti web UI, native GPS buffer za ozadje.
 - `firmware/src/main.cpp` — ESP32: NimBLE **1.4** (ne 2.x!), sejalnica binarni RS485
   sniffer (poslušalec, DE trajno LOW), rate cmd, CAN/J1939 za `-D CAN_ENABLED`.
   `sejalnica_proto.h` = kopija sejalnica `shared/rs485_proto.h`.
 
 ## Ključne funkcije po verzijah (kratko)
+- v5.4.6: Android foreground GPS wrapper; background buffer se ob vrnitvi prelije v isto PWA sejo; release APK je v `downloads/AgroTracker-Android.apk`.
 - v5.4.5: uporabniški toggle za Screen Wake Lock; privzeto vklopljen med aktivno sejo, z live HUD stanjem.
 - v5.4.4: med aktivno sejo Screen Wake Lock preprečuje samodejni izklop zaslona; HUD pokaže stanje in lock se ob vrnitvi v ospredje ponovno pridobi.
 - v5.4.3: monitor setve je samostojen pogled; stabilni SVG grafi z nespremenljivo skalo in gladkim časovnim odkrivanjem podatkov.

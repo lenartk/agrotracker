@@ -55,7 +55,7 @@
       </div>
       <div style="flex:1">
         <div class="home-title">AGRO<em>TRACKER</em></div>
-        <div class="home-sub">GPS vodenje · sledenje · evidenca — v5.4.5</div>
+        <div class="home-sub">GPS vodenje · sledenje · evidenca — v5.4.6</div>
       </div>
       <button class="iconbtn circle" id="homeHistoryBtn" title="Zgodovina"><svg class="icon"><use href="#i-folder"/></svg></button>
       <button class="iconbtn circle" id="homeSettingsBtn" title="Nastavitve"><svg class="icon"><use href="#i-sliders"/></svg></button>
@@ -356,7 +356,9 @@
       <h3>Prikaz in sledenje</h3>
       <label class="toggle"><span>Dnevni način (svetla tema za sonce)</span><input type="checkbox" id="settingsDayMode"></label>
       <label class="toggle"><span>Med aktivno sejo ne ugašaj zaslona</span><input type="checkbox" id="settingsKeepScreenAwake"></label>
-      <div class="hint" style="margin-top:6px">Ko je vklopljeno, AgroTracker med sledenjem drži zaslon buden. Ročni zaklep ali prehod v drug app je pri PWA še vedno omejen; pravo sledenje v ozadju zahteva Android foreground service.</div>
+      <label class="toggle"><span>Sledenje GPS v ozadju (Android)</span><input type="checkbox" id="settingsBackgroundTracking"></label>
+      <div class="hint" id="settingsBackgroundStatus" style="margin-top:6px">Preverjam podporo…</div>
+      <a class="minibtn android-download" id="settingsAndroidDownload" href="./downloads/AgroTracker-Android.apk" download>Prenesi Android različico za background GPS</a>
     </div>
 
     <div class="card">
@@ -404,7 +406,7 @@
     <div class="card">
       <h3>O aplikaciji</h3>
       <div class="note">
-        AgroTracker v5.4.5 — GPS vodenje (AB linije + lightbar), 2D/3D karta s terenom, sledenje obdelanim površinam in GERK evidenca opravil.<br>
+        AgroTracker v5.4.6 — GPS vodenje (AB linije + lightbar), 2D/3D karta s terenom, sledenje obdelanim površinam in GERK evidenca opravil.<br>
         Povezava z ESP32 modulom preko Web Bluetooth.<br><br>
         <strong>Brskalnik:</strong> <span id="settingsBrowser" class="small muted"></span><br>
         <strong>Nameščeno:</strong> <span id="settingsCacheVer" class="small muted">—</span>

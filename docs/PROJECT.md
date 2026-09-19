@@ -2,10 +2,10 @@
 
 Sledenje obdelanim površinam na kmetiji. PWA (telefon + PC), ESP32 modul na stroju, GPS + BLE + RS485.
 
-**Verzija:** v5.4.5 (september 2026)
+**Verzija:** v5.4.6 (september 2026)
 **Repo:** `github.com/lenartk/agrotracker`
 **Live:** `https://lenartk.github.io/agrotracker/`
-**Status:** v5.4.5 pripravljen za GitHub Pages — terenski povzetek setve/materiala, stabilen samostojen monitor setve, GPS vodenje in evidenca opravil
+**Status:** v5.4.6 pripravljen za GitHub Pages + Android wrapper — terenski povzetek setve/materiala, stabilen samostojen monitor setve, GPS vodenje in evidenca opravil
 
 ---
 
@@ -21,6 +21,11 @@ izvoz/uvoz
 ```
 
 **Telefon je terminal in pregled, ESP32 zbira podatke iz stroja, RS485 je standardni industrijski povezovalni kanal.**
+
+### Android background GPS sloj (v5.4.6)
+
+Primarni UI in poslovna logika ostajata PWA. `android-wrapper/` je tanek native sloj samo za Android funkcije, ki jih browser ne more zanesljivo izvajati v ozadju. `TrackingService` kot foreground location service zbira GPS z ugasnjenim zaslonom ali med uporabo drugega appa; ob vrnitvi WebView točke preda isti PWA seji. Ne podvajaj UI ali farm logike v native kodi.
+
 
 ---
 

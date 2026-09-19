@@ -168,6 +168,12 @@ class GPSSource extends EventTarget {
     return (d / dt) * 3.6;
   }
 
+  injectFix(fix){
+    if (!fix || typeof fix.lat !== 'number' || typeof fix.lng !== 'number') return false;
+    this._emitFix({ ...fix, source: fix.source || 'native-bg' });
+    return true;
+  }
+
   _emitFix(fix){
     // Glajenje pravih virov (sim je že idealen) — proti driftu in tavanju pri mirovanju
     if (fix.source !== 'sim'){

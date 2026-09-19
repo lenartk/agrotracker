@@ -1,3 +1,14 @@
+## v5.4.6 — 2026-09-19
+
+- Dodan Android wrapper nad istim AgroTracker UI za zanesljivo GPS sledenje v ozadju.
+- Native `TrackingService` uporablja foreground location service + ongoing notification + partial CPU wake lock.
+- Ko WebView ni vidna, Android shranjuje GPS točke v lokalni buffer; ob vrnitvi jih PWA prenese skozi isti `gps.injectFix()` / `Session.addFix()` tok.
+- Nastavitve dobijo toggle **Sledenje GPS v ozadju (Android)**; v navadni PWA je jasno onemogočen, v Android wrapperju je privzeto vklopljen.
+- Dodan stabilno podpisan release APK `downloads/AgroTracker-Android.apk` in gumb za prenos v Nastavitvah.
+- Android package: `si.kosir.agrotracker`, min SDK 26, target/compile SDK 35.
+- Pomembna omejitev: WebView ima svoj IndexedDB profil, ločen od Chrome PWA; obstoječi lokalni podatki se še ne prenesejo avtomatsko.
+- Service Worker cache: v27.
+
 ## v5.4.5 — 2026-09-19
 
 - Nastavitve: dodan toggle **Med aktivno sejo ne ugašaj zaslona** (privzeto vklopljen).
