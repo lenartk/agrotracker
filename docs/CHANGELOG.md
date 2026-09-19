@@ -1,3 +1,11 @@
+## v5.4.4 — 2026-09-19
+
+- Med aktivno sejo AgroTracker zahteva Screen Wake Lock, da Android/brskalnik ne ugasne zaslona in s tem prekine GPS sledenja.
+- HUD kaže `☀ Zaslon buden`, ko je zaščita dejansko aktivna, oziroma opozorilo, če je ni mogoče pridobiti.
+- Ob pavzi/koncu seje se wake lock sprosti; po vrnitvi aplikacije v ospredje se med aktivno sejo sam ponovno pridobi.
+- Omejitev PWA ostaja: ročni zaklep zaslona ali daljše delo v ozadju ne zagotavlja neprekinjenega GPS; za to bi bil potreben native Android foreground service.
+- Service Worker cache: v25.
+
 ## v5.4.3 — 2026-09-16
 
 - Monitor 30-min setve je prestavljen iz modala na samostojen pogled/stran.

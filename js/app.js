@@ -230,6 +230,72 @@ function fmtTs(ms){
   return d.toLocaleDateString('sl-SI') + ' ' + d.toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' });
 }
 
+// ============ SCREEN WAKE LOCK ============
+// Med aktivnim sledenjem prepreči samodejni izklop zaslona. Ko Android/PWA
+// lock ob prehodu v ozadje sprosti, ga ob vrnitvi v ospredje ponovno zahtevamo.
+let _screenWakeLock = null;
+let _wakeLockWarned = false;
+
+function wakeLockWanted(){
+  return !!state.session && state.session.state === 'running';
+}
+
+function refreshWakeLockUI(){
+  const el = $('#wakePill');
+  if (!el) return;
+  const held = !!_screenWakeLock && !_screenWakeLock.released;
+  if (held){ el.textContent = '☀ Zaslon buden'; el.className = 'hud-stat on'; }
+  else if (wakeLockWanted()){
+    el.textContent = '⚠ Zaslon'; el.className = 'hud-stat err';
+  } else {
+    el.textContent = 'Zaslon —'; el.className = 'hud-stat off';
+  }
+}
+
+async function requestScreenWakeLock({ silent = false } = {}){
+  if (!wakeLockWanted()) { refreshWakeLockUI(); return false; }
+  if (!('wakeLock' in navigator)){
+    refreshWakeLockUI();
+    if (!silent && !_wakeLockWarned){
+      _wakeLockWarned = true;
+      toast('Telefon ne podpira zaščite zaslona. Med sledenjem nastavi daljši čas ugašanja.', 5000);
+    }
+    return false;
+  }
+  if (document.visibilityState !== 'visible') return false;
+  if (_screenWakeLock && !_screenWakeLock.released){ refreshWakeLockUI(); return true; }
+  try {
+    const lock = await navigator.wakeLock.request('screen');
+    _screenWakeLock = lock;
+    lock.addEventListener('release', () => {
+      if (_screenWakeLock === lock) _screenWakeLock = null;
+      refreshWakeLockUI();
+    });
+    refreshWakeLockUI();
+    return true;
+  } catch (e){
+    console.warn('Screen Wake Lock ni uspel', e);
+    refreshWakeLockUI();
+    if (!silent && !_wakeLockWarned){
+      _wakeLockWarned = true;
+      toast('Zaslona ni bilo mogoče zadržati budnega. Preveri varčevanje baterije.', 5000);
+    }
+    return false;
+  }
+}
+
+async function releaseScreenWakeLock(){
+  const lock = _screenWakeLock;
+  _screenWakeLock = null;
+  try { if (lock && !lock.released) await lock.release(); } catch {}
+  refreshWakeLockUI();
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && wakeLockWanted()) requestScreenWakeLock({ silent: true });
+  else refreshWakeLockUI();
+});
+
 // ============ INIT ============
 function applyTheme(){
   document.documentElement.dataset.theme = state.settings.dayTheme ? 'day' : '';
@@ -313,6 +379,7 @@ async function init(){
   renderHome();
   showView('home');
   refreshOnlinePill();
+  refreshWakeLockUI();
 
   // Register SW + samodejna posodobitev: ko novi SW prevzame nadzor,
   // stran enkrat osvežimo — uporabniku ni treba več "resetirati" aplikacije.
@@ -1792,12 +1859,14 @@ async function startSession(){
   setTrackingUI('running');
   refreshTelemetryUI();
   toast('Seja začeta: ' + op.name);
+  requestScreenWakeLock();
   startAutoSaveTimer();
 }
 
 function pauseSession(){
   if (!state.session || state.session.state !== 'running') return;
   state.session.pause();
+  releaseScreenWakeLock();
   setTrackingUI('paused');
   toast('Pavza');
 }
@@ -1805,6 +1874,7 @@ function resumeSession(){
   if (!state.session || state.session.state !== 'paused') return;
   state.session.start();
   setTrackingUI('running');
+  requestScreenWakeLock();
   toast('Nadaljuj');
 }
 async function confirmStopSession(){
@@ -1815,6 +1885,7 @@ async function confirmStopSession(){
 async function stopSession(){
   if (!state.session) return;
   state.session.stop();
+  releaseScreenWakeLock();
   setTrackingUI('stopped');
   stopAutoSaveTimer();
   try {

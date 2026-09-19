@@ -1,6 +1,6 @@
 # AgroTracker — RESUME (hitri vstop po restartu)
 
-Zadnja posodobitev: 2026-09-16, verzija **v5.4.3** (SW cache v24), live na
+Zadnja posodobitev: 2026-09-16, verzija **v5.4.4** (SW cache v25), live na
 `https://lenartk.github.io/agrotracker/`.
 
 ## Kaj je AgroTracker
@@ -15,7 +15,7 @@ kmetije (KMG-MID **100220160**, kraška regija, pretežno travniki + njive).
 - Repo ima tudi `gpt/` podmapo (uporabnikov ločen eksperiment) — NE dotikaj.
 - **Deploy = git push na main → GitHub Pages** (~1–3 min). Vedno počakaj potrditev:
   `until curl -s .../sw.js | grep -q "agrotracker-app-vNN"; do sleep 10; done` (run_in_background).
-- **Ob VSAKI spremembi PWA zvišaj `APP_CACHE` v `sw.js`** (trenutno v22). Od v4.2.1
+- **Ob VSAKI spremembi PWA zvišaj `APP_CACHE` v `sw.js`** (trenutno v25). Od v4.2.1
   se telefon posodablja sam (install s `cache:'reload'` + controllerchange reload).
 
 ## Arhitektura (js/, vanilla ES moduli, brez bundlerja)
@@ -37,6 +37,7 @@ kmetije (KMG-MID **100220160**, kraška regija, pretežno travniki + njive).
   `sejalnica_proto.h` = kopija sejalnica `shared/rs485_proto.h`.
 
 ## Ključne funkcije po verzijah (kratko)
+- v5.4.4: med aktivno sejo Screen Wake Lock preprečuje samodejni izklop zaslona; HUD pokaže stanje in lock se ob vrnitvi v ospredje ponovno pridobi.
 - v5.4.3: monitor setve je samostojen pogled; stabilni SVG grafi z nespremenljivo skalo in gladkim časovnim odkrivanjem podatkov.
 - v5.4.2: 30-min primer setve je živ monitor z animirano telemetrijo, grafoma odmerka in hitrosti ter pavzo/ponovitvijo; pripravljen za kasnejši priklop na pravo Wi-Fi telemetrijo.
 - v5.4.1: na začetni zaslon dodana jasno vidna Zgodovina, 30-min demo pregled in pojasnilo, da bo sejalnica zaradi ESP32-S2 povezana prek Wi-Fi.
