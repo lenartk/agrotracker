@@ -1,3 +1,15 @@
+## v5.4.7 — 2026-09-21
+
+- Dodan polni lokalni backup `agrotracker/local-backup/v1`: `parcels`, `sessions`, `kv`, `gerklib`, `layers`.
+- Nastavitve → Podatki: **Prenesi podatke v Android app**, **Shrani polni backup** in **Uvozi polni backup**.
+- Prenos iz stare Chrome/PWA v Android app uporablja Android Share (`ACTION_SEND`, `application/json`) in ne pošilja podatkov na strežnik.
+- Android wrapper v2 sprejme backup, ga hrani lokalno, PWA ga prebere po 128 KiB kosih prek native bridge-a, pokaže povzetek in ga po potrditvi mergea v IndexedDB.
+- Merge ne briše obstoječih Android podatkov; pri enakem ID-ju zmaga preneseni zapis. Po uspešnem uvozu se pending backup pobriše.
+- Dodan tudi Android sistemski file chooser za ročni fallback **Uvozi polni backup**.
+- Offline map tile-i se namenoma ne selijo; v Android appu se jih ponovno predprenaša.
+- Android `versionCode=2`, `versionName=5.4.7`; isti release signing ključ kot v5.4.6, zato gre update čez obstoječo namestitev.
+- Service Worker cache: v28.
+
 ## v5.4.6 — 2026-09-19
 
 - Dodan Android wrapper nad istim AgroTracker UI za zanesljivo GPS sledenje v ozadju.

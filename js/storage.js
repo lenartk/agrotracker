@@ -157,3 +157,55 @@ export async function storageEstimate(){
     quotaMB: (est.quota || 0) / 1024 / 1024
   };
 }
+// ============ POLNI LOKALNI BACKUP / MIGRACIJA ============
+
+const BACKUP_SCHEMA = 'agrotracker/local-backup/v1';
+const BACKUP_STORES = ['parcels', 'sessions', 'kv', 'gerklib', 'layers'];
+
+async function getAllRaw(storeName){
+  const store = await tx(storeName);
+  return promisify(store.getAll());
+}
+
+export async function exportLocalBackup(){
+  const data = {};
+  for (const name of BACKUP_STORES) data[name] = await getAllRaw(name);
+  return {
+    schema: BACKUP_SCHEMA,
+    createdAt: new Date().toISOString(),
+    dbName: DB_NAME,
+    dbVersion: DB_VERSION,
+    data
+  };
+}
+
+export function backupSummary(backup){
+  const d = backup?.data || {};
+  return {
+    parcels: Array.isArray(d.parcels) ? d.parcels.length : 0,
+    sessions: Array.isArray(d.sessions) ? d.sessions.length : 0,
+    layers: Array.isArray(d.layers) ? d.layers.length : 0,
+    gerk: Array.isArray(d.gerklib) && d.gerklib[0]?.fc?.features
+      ? d.gerklib[0].fc.features.length : 0
+  };
+}
+
+export async function importLocalBackup(backup){
+  if (!backup || backup.schema !== BACKUP_SCHEMA || !backup.data){
+    throw new Error('Datoteka ni veljaven AgroTracker lokalni backup.');
+  }
+  const db = await openDB();
+  const tr = db.transaction(BACKUP_STORES, 'readwrite');
+  for (const name of BACKUP_STORES){
+    const rows = backup.data[name];
+    if (!Array.isArray(rows)) continue;
+    const store = tr.objectStore(name);
+    for (const row of rows) store.put(row);
+  }
+  await new Promise((resolve, reject) => {
+    tr.oncomplete = () => resolve();
+    tr.onerror = () => reject(tr.error || new Error('Napaka IndexedDB pri uvozu.'));
+    tr.onabort = () => reject(tr.error || new Error('Uvoz IndexedDB je bil preklican.'));
+  });
+  return backupSummary(backup);
+}

@@ -55,7 +55,7 @@
       </div>
       <div style="flex:1">
         <div class="home-title">AGRO<em>TRACKER</em></div>
-        <div class="home-sub">GPS vodenje · sledenje · evidenca — v5.4.6</div>
+        <div class="home-sub">GPS vodenje · sledenje · evidenca — v5.4.7</div>
       </div>
       <button class="iconbtn circle" id="homeHistoryBtn" title="Zgodovina"><svg class="icon"><use href="#i-folder"/></svg></button>
       <button class="iconbtn circle" id="homeSettingsBtn" title="Nastavitve"><svg class="icon"><use href="#i-sliders"/></svg></button>
@@ -395,9 +395,13 @@
       <h3>Podatki</h3>
       <div class="rowline"><span class="small muted">Seje</span><strong id="settingsSessionsCount">—</strong></div>
       <div class="rowline"><span class="small muted">Zasedenost</span><strong id="settingsStorageUsage">—</strong></div>
-      <div class="hint" style="margin-top:8px">Izvozi vsebujejo GERK_PID — evidenca je uporabna v drugih programih (dnevnik gnojenja, FADN ipd.).</div>
+      <div class="hint" style="margin-top:8px">Polni lokalni backup vsebuje nastavitve, parcele/GERK, zgodovino sej in sloje. Prenos v Android poteka neposredno med aplikacijama — brez strežnika.</div>
+      <input type="file" id="fileImportBackup" accept=".json,application/json" style="display:none">
       <div class="btn-row">
-        <button class="minibtn" id="settingsExportAllBtn">Backup vseh sej</button>
+        <button class="minibtn primary" id="settingsTransferAndroidBtn">Prenesi podatke v Android app</button>
+        <button class="minibtn" id="settingsFullBackupBtn">Shrani polni backup</button>
+        <button class="minibtn" id="settingsImportBackupBtn">Uvozi polni backup</button>
+        <button class="minibtn" id="settingsExportAllBtn">Backup vseh sej (GeoJSON)</button>
         <button class="minibtn" id="settingsExportCsvBtn">Izvoz CSV (evidenca)</button>
         <button class="minibtn danger" id="settingsResetSettingsBtn">Resetiraj nastavitve</button>
       </div>
@@ -406,7 +410,7 @@
     <div class="card">
       <h3>O aplikaciji</h3>
       <div class="note">
-        AgroTracker v5.4.6 — GPS vodenje (AB linije + lightbar), 2D/3D karta s terenom, sledenje obdelanim površinam in GERK evidenca opravil.<br>
+        AgroTracker v5.4.7 — GPS vodenje (AB linije + lightbar), 2D/3D karta s terenom, sledenje obdelanim površinam in GERK evidenca opravil.<br>
         Povezava z ESP32 modulom preko Web Bluetooth.<br><br>
         <strong>Brskalnik:</strong> <span id="settingsBrowser" class="small muted"></span><br>
         <strong>Nameščeno:</strong> <span id="settingsCacheVer" class="small muted">—</span>

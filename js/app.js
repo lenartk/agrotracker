@@ -15,7 +15,8 @@ import {
   savedSessions, saveSession, deleteSession, getSession,
   saveGerkLib, getGerkLib, clearGerkLib,
   savedLayers, saveLayer, deleteLayer,
-  getKV, setKV, newId, storageEstimate
+  getKV, setKV, newId, storageEstimate,
+  exportLocalBackup, importLocalBackup, backupSummary
 } from './storage.js';
 import {
   featureHa, bboxOfFeature, centroidOfFeature, pointInFeature,
@@ -429,6 +430,7 @@ async function init(){
   showView('home');
   refreshOnlinePill();
   refreshWakeLockUI();
+  setTimeout(() => maybeImportNativeBackup(), 350);
 
   // Register SW + samodejna posodobitev: ko novi SW prevzame nadzor,
   // stran enkrat osvežimo — uporabniku ni treba več "resetirati" aplikacije.
@@ -2891,6 +2893,108 @@ function downloadBlob(blob, name){
   setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
 }
 
+function localBackupName(){
+  return `agrotracker-polni-backup-${new Date().toISOString().slice(0,10)}.json`;
+}
+
+async function makeLocalBackupFile(){
+  const backup = await exportLocalBackup();
+  const json = JSON.stringify(backup);
+  const file = new File([json], localBackupName(), { type: 'application/json' });
+  return { backup, file, summary: backupSummary(backup) };
+}
+
+async function saveFullLocalBackup(){
+  try {
+    const { file, summary } = await makeLocalBackupFile();
+    downloadBlob(file, file.name);
+    toast(`Polni backup: ${summary.parcels} parcel · ${summary.sessions} sej`, 3500);
+  } catch (e){
+    console.warn(e);
+    appInfo('Polnega backupa ni bilo mogoče izdelati: ' + (e.message || e), 'Napaka');
+  }
+}
+
+async function transferLocalBackupToAndroid(){
+  try {
+    const { file, summary } = await makeLocalBackupFile();
+    const shareData = {
+      title: 'AgroTracker — prenos podatkov',
+      text: `AgroTracker: ${summary.parcels} parcel, ${summary.sessions} sej`,
+      files: [file]
+    };
+    const canShareFiles = !!navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }));
+    if (canShareFiles){
+      await navigator.share(shareData);
+      toast('Podatki poslani — v Share meniju izberi AgroTracker.', 4000);
+      return;
+    }
+    downloadBlob(file, file.name);
+    await appInfo('Telefon ne podpira neposrednega Share prenosa datoteke. Polni backup sem prenesel. V Android AgroTrackerju odpri Nastavitve → Podatki → Uvozi polni backup.', 'Backup prenesen');
+  } catch (e){
+    if (e?.name === 'AbortError') return;
+    console.warn(e);
+    appInfo('Prenos ni uspel: ' + (e.message || e), 'Napaka');
+  }
+}
+
+async function confirmAndImportLocalBackup(backup, sourceLabel = 'backup', onImported = null){
+  if (!backup || backup.schema !== 'agrotracker/local-backup/v1'){
+    throw new Error('Datoteka ni veljaven AgroTracker polni backup.');
+  }
+  const summary = backupSummary(backup);
+  const ok = await appConfirm(
+    `Uvozim ${summary.parcels} parcel, ${summary.sessions} sej, ${summary.layers} slojev in GERK knjižnico (${summary.gerk} zapisov)?\n\nObstoječi podatki ostanejo; enaki ID-ji se posodobijo iz ${sourceLabel}.`,
+    { okLabel: 'Uvozi' }
+  );
+  if (!ok) return false;
+  await importLocalBackup(backup);
+  if (onImported) await onImported(summary);
+  await appInfo(`Prenos končan: ${summary.parcels} parcel · ${summary.sessions} sej · ${summary.layers} slojev. AgroTracker se bo osvežil.`, 'Podatki uvoženi');
+  return true;
+}
+
+async function importLocalBackupFile(file){
+  const backup = JSON.parse(await file.text());
+  const imported = await confirmAndImportLocalBackup(backup, 'datoteke');
+  if (imported) location.reload();
+}
+
+let _nativeImportBusy = false;
+async function maybeImportNativeBackup(){
+  if (_nativeImportBusy || !nativeBridgeAvailable() || typeof window.AgroNative.pendingImportSize !== 'function') return;
+  const size = Number(window.AgroNative.pendingImportSize());
+  if (!(size > 0)) return;
+  _nativeImportBusy = true;
+  try {
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    const chunkSize = 128 * 1024;
+    while (offset < size){
+      const n = Math.min(chunkSize, size - offset);
+      const b64 = window.AgroNative.readPendingImportChunk(offset, n);
+      const bin = atob(b64 || '');
+      for (let i = 0; i < bin.length; i++) bytes[offset + i] = bin.charCodeAt(i);
+      offset += bin.length;
+      if (!bin.length) throw new Error('Android ni vrnil celotnega backupa.');
+    }
+    const backup = JSON.parse(new TextDecoder().decode(bytes));
+    const imported = await confirmAndImportLocalBackup(
+      backup,
+      'stare PWA',
+      () => window.AgroNative.clearPendingImport()
+    );
+    if (imported) location.reload();
+  } catch (e){
+    console.warn(e);
+    await appInfo('Prejetega backupa ni bilo mogoče uvoziti: ' + (e.message || e), 'Napaka prenosa');
+  } finally {
+    _nativeImportBusy = false;
+  }
+}
+
+window.addEventListener('agrotrackerNativeImportReady', () => maybeImportNativeBackup());
+
 // ============ SETTINGS VIEW ============
 function wireSettingsView(){
   $('#settingsBackBtn').onclick = () => showView('home');
@@ -3033,6 +3137,19 @@ function wireSettingsView(){
     toast('Tile cache izbrisan');
     renderSettings();
   };
+  $('#settingsTransferAndroidBtn').onclick = () => transferLocalBackupToAndroid();
+  $('#settingsFullBackupBtn').onclick = () => saveFullLocalBackup();
+  $('#settingsImportBackupBtn').onclick = () => $('#fileImportBackup').click();
+  $('#fileImportBackup').addEventListener('change', async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    try { await importLocalBackupFile(f); }
+    catch (err){
+      console.warn(err);
+      await appInfo('Uvoz polnega backupa ni uspel: ' + (err.message || err), 'Napaka');
+    }
+    e.target.value = '';
+  });
   $('#settingsExportAllBtn').onclick = () => exportAllSessionsAsGeoJSON();
   $('#settingsAddOpBtn').onclick = () => addCustomOp();
   $('#settingsImportLayerBtn').onclick = () => $('#fileImportLayer').click();
@@ -3120,12 +3237,24 @@ async function renderSettings(){
   $('#settingsDayMode').checked = state.settings.dayTheme;
   $('#settingsKeepScreenAwake').checked = state.settings.keepScreenAwake !== false;
   const nativeBg = nativeBridgeAvailable();
+  let wrapperVersion = 0;
+  try {
+    wrapperVersion = nativeBg && typeof window.AgroNative.wrapperVersion === 'function'
+      ? Number(window.AgroNative.wrapperVersion()) || 1 : 0;
+  } catch {}
   $('#settingsBackgroundTracking').checked = nativeBg && state.settings.backgroundTracking !== false;
   $('#settingsBackgroundTracking').disabled = !nativeBg;
   $('#settingsBackgroundStatus').textContent = nativeBg
-    ? 'Android foreground service: GPS lahko teče tudi z ugasnjenim zaslonom ali med uporabo drugega appa.'
-    : 'V navadni PWA tega Android/Chrome ne omogoča. Ta možnost se aktivira v AgroTracker Android različici.';
-  $('#settingsAndroidDownload').style.display = nativeBg ? 'none' : '';
+    ? (wrapperVersion >= 2
+        ? 'Android foreground service: GPS lahko teče tudi z ugasnjenim zaslonom ali med uporabo drugega appa. Prenos lokalnih podatkov iz stare PWA je podprt.'
+        : 'Background GPS deluje. Za neposreden prenos podatkov iz stare PWA posodobi Android AgroTracker na v5.4.7.')
+    : 'V navadni PWA background GPS ni zanesljiv. Android različica doda foreground GPS in neposreden prenos lokalnih podatkov.';
+  const androidDownload = $('#settingsAndroidDownload');
+  androidDownload.style.display = (!nativeBg || wrapperVersion < 2) ? '' : 'none';
+  androidDownload.textContent = nativeBg && wrapperVersion < 2
+    ? 'Posodobi Android app na v5.4.7'
+    : 'Prenesi Android različico za background GPS';
+  $('#settingsTransferAndroidBtn').style.display = nativeBg ? 'none' : '';
   $('#settingsUseBleActive').checked = state.settings.useBleMachineActive;
   $('#settingsUseBleWidth').checked = state.settings.useBleWidth;
 

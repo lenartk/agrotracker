@@ -43,9 +43,14 @@ Končni APK:
 Objavljena kopija:
 `../downloads/AgroTracker-Android.apk`
 
-## Omejitve
+## Lokalni podatki in omejitve
 
-WebView ima svoj storage profil, ločen od Chrome PWA. UI/koda sta ista,
-vendar obstoječi IndexedDB podatki iz Chrome PWA niso avtomatsko preneseni.
-Do centralnega synca je za prehod potreben ponoven uvoz parcel/nastavitev
-oziroma kasnejša namenska migracija.
+WebView ima svoj storage profil, ločen od Chrome PWA. Od v5.4.7 se obstoječi
+IndexedDB podatki prenesejo s polnim lokalnim backupom prek Android Share ali
+sistemskega file chooserja. Uvoz je merge: dodatni Android zapisi ostanejo,
+enaki ID-ji pa se posodobijo iz prenesenega backupa. Offline map tile cache se
+ne prenaša in ga je treba v Android appu po potrebi ponovno prednaložiti.
+
+## Prenos podatkov iz stare PWA
+
+Od wrapper verzije 2 / AgroTracker v5.4.7 Activity sprejme Android `ACTION_SEND` za JSON backup. Prejeti backup se shrani lokalno, PWA ga bere po kosih prek `AgroNative.pendingImportSize()` in `readPendingImportChunk()`, nato ga po potrditvi mergea v IndexedDB. Alternativa je `Uvozi polni backup`, za kar WebView uporablja sistemski file chooser. Prenos ne uporablja strežnika.
